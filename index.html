@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PIXEL FLEET — Estrategia espacial</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <!-- ===== MENÚ DE INICIO ===== -->
+  <div id="menu">
+    <div class="stars-bg"></div>
+    <div class="menu-box">
+      <h1 class="title">PIXEL<span>FLEET</span></h1>
+      <p class="subtitle">Estrategia espacial multijugador</p>
+      <div class="menu-buttons">
+        <button id="btn-play" class="btn">▶ NUEVA PARTIDA</button>
+        <button id="btn-help" class="btn">¿CÓMO JUGAR?</button>
+        <button id="btn-settings" class="btn">AJUSTES</button>
+      </div>
+      <div id="room-box">
+        <input id="input-room" maxlength="8" placeholder="CÓDIGO DE SALA (opcional)">
+      </div>
+      <p class="footer">v0.7 · control RTS de flota · persistencia total</p>
+    </div>
+
+    <div id="panel-help" class="panel hidden">
+      <h2>OBJETIVO</h2>
+      <p>Conquista planetas para tu facción, gana créditos, destruye rivales y domina la galaxia.</p>
+      <h2>CONTROLES</h2>
+      <p><b>WASD / Flechas</b> — mover tu nave</p>
+      <p><b>Ratón</b> — apuntar la nave</p>
+      <p><b>CLIC (mantener)</b> — disparar (también mina asteroides)</p>
+      <p><b>SHIFT + arrastrar</b> — seleccionar naves de tu flota (cuadro de selección)</p>
+      <p><b>CLIC</b> con naves seleccionadas — moverlas a ese punto</p>
+      <p><b>CLIC DERECHO</b> — menú de órdenes: mover/atacar aquí, defender un planeta tuyo, seguirme, guarnición, parar o recoger</p>
+      <p><b>ESC</b> — soltar la selección</p>
+      <p><b>ESPACIO</b> — impulso (gasta combustible)</p>
+      <p><b>B</b> — tienda &nbsp;·&nbsp; <b>F</b> — diplomacia &nbsp;·&nbsp; <b>C</b> — contratos &nbsp;·&nbsp; <b>H</b> — hangar</p>
+      <p><b>ENTER</b> — chat &nbsp;·&nbsp; <b>M</b> — menú</p>
+      <h2>ESCUDOS Y SALAS</h2>
+      <p>Los planetas conquistados tienen <b>escudo</b>: dispara para destruirlo antes de capturar. Escribe un <b>código de sala</b> en el menú para jugar solo con tus amigos; en sala, el primero en lograr <b>10 bajas</b> gana el torneo.</p>
+      <h2>PROGRESO</h2>
+      <p>Tu partida <b>se guarda automáticamente</b> por completo: piloto, flota, planetas, bots, diplomacia y contratos. Dispara a los <b>asteroides</b> para ganar créditos y combustible.</p>
+      <h2>REGLAS</h2>
+      <p>🪐 <b>Conquista:</b> permanece cerca de un planeta hasta capturarlo. Los planetas de tu facción te dan <b>créditos</b> cada segundo y repostan combustible.</p>
+      <p>💥 <b>Combate:</b> cada nave tiene 3 impactos de vida (tú, 5). Al destruir una nave ganas <b>25 créditos</b>.</p>
+      <p>⛽ <b>Combustible:</b> el impulso lo consume; se repone solo despacio y rápido cerca de planetas propios.</p>
+      <button class="btn btn-close">CERRAR</button>
+    </div>
+
+    <div id="panel-settings" class="panel hidden">
+      <h2>AJUSTES</h2>
+      <p>Nombre de piloto:</p>
+      <input id="input-name" maxlength="12" placeholder="PilotoAnónimo">
+      <p>Color de facción:</p>
+      <div id="color-picker"></div>
+      <button id="btn-wipe" class="btn btn-close">🗑 BORRAR PARTIDA</button>
+      <button class="btn btn-close">CERRAR</button>
+    </div>
+  </div>
+
+  <!-- ===== JUEGO ===== -->
+  <div id="game" class="hidden">
+    <canvas id="canvas"></canvas>
+
+    <div id="hud">
+      <div id="hud-name"></div>
+      <div id="hud-coords"></div>
+      <div id="hud-online">👾 <span id="online-count">0</span> pilotos online</div>
+    </div>
+
+    <!-- Clasificación -->
+    <div id="board">
+      <h3>🏆 CLASIFICACIÓN</h3>
+      <ol id="board-list"></ol>
+    </div>
+
+    <!-- Chat -->
+    <div id="chat">
+      <div id="chat-log"></div>
+      <input id="chat-input" maxlength="80" placeholder="Pulsa ENTER para hablar…">
+    </div>
+
+    <!-- Minimapa -->
+    <div id="minimap"><canvas id="minimap-canvas" width="150" height="150"></canvas></div>
+
+    <!-- Barras inferiores -->
+    <div id="bars">
+      <div class="bar"><span>HP</span><div class="bar-bg"><div id="hp-fill"></div></div></div>
+      <div class="bar"><span>⛽</span><div class="bar-bg"><div id="fuel-fill"></div></div></div>
+      <div id="credits">◈ 0</div>
+      <div id="kills">💀 0</div>
+    </div>
+
+    <!-- Barra de captura -->
+    <div id="capbar" class="hidden">
+      <div id="capbar-label"></div>
+      <div class="capbar-bg"><div id="capbar-fill"></div></div>
+    </div>
+
+    <div id="respawn-msg" class="hidden"></div>
+
+    <!-- Banner de fase de preparación (v0.5) -->
+    <div id="prep-banner" class="hidden"></div>
+
+    <!-- Barra lateral de accesos (v0.5.3) -->
+    <div id="toolbar">
+      <button data-panel="hangar"    title="🚀 Hangar y construcción  [H]">🚀</button>
+      <button data-panel="shop"      title="🔧 Tienda de mejoras  [B]">🔧</button>
+      <button data-panel="diplo"     title="🤝 Diplomacia  [F]">🤝</button>
+      <button data-panel="contracts" title="📋 Contratos  [C]">📋</button>
+      <button id="tb-chat"           title="💬 Chat  [ENTER]">💬</button>
+      <button id="tb-menu"           title="🏠 Volver al menú  [M]">🏠</button>
+    </div>
+
+    <!-- Tutorial guiado (v0.5.2) -->
+    <div id="tutorial" class="hidden"></div>
+
+    <!-- Tienda de mejoras (tecla B) -->
+    <div id="shop" class="game-panel hidden">
+      <h3>🔧 TIENDA</h3>
+      <p class="panel-sub">Créditos: <span id="shop-credits">0</span> ◈</p>
+      <div id="shop-items"></div>
+      <p class="panel-hint">Pulsa <b>B</b> para cerrar</p>
+    </div>
+
+    <!-- Diplomacia (tecla F) -->
+    <div id="diplo" class="game-panel hidden">
+      <h3>🤝 DIPLOMACIA</h3>
+      <div id="diplo-list"></div>
+      <p class="panel-hint">Pulsa <b>F</b> para cerrar</p>
+    </div>
+
+    <!-- Contratos (tecla C) -->
+    <div id="contracts" class="game-panel hidden">
+      <h3>📋 CONTRATOS</h3>
+      <div id="contract-active"></div>
+      <h4 class="panel-sub2">DISPONIBLES</h4>
+      <div id="contract-offers"></div>
+      <p class="panel-hint">Pulsa <b>C</b> para cerrar</p>
+    </div>
+
+    <!-- Hangar (tecla H) — v0.6: construir / flota activa / hangar -->
+    <div id="hangar" class="game-panel hidden">
+      <h3>🚀 HANGAR</h3>
+      <p class="panel-sub">Pilotando: <span id="hangar-current"></span> · Créditos: <span id="hangar-credits">0</span> ◈<span id="hangar-where"></span></p>
+      <h4 class="panel-sub2">CONSTRUIR (en tu capital)<span id="hangar-qstat"></span></h4>
+      <div id="hangar-build"></div>
+      <h4 class="panel-sub2">FLOTA ACTIVA <span id="hangar-fstat"></span></h4>
+      <div id="hangar-fleet"></div>
+      <h4 class="panel-sub2">HANGAR <span id="hangar-hstat"></span></h4>
+      <div id="hangar-store"></div>
+      <p class="panel-hint">Pulsa <b>H</b> para cerrar</p>
+    </div>
+
+    <!-- Torneo (salas) -->
+    <div id="tourney" class="hidden"></div>
+
+    <!-- Menú contextual de órdenes de flota (v0.7, botón derecho) -->
+    <div id="fleet-menu" class="hidden"></div>
+  </div>
+
+  <script src="game.js"></script>
+</body>
+</html>

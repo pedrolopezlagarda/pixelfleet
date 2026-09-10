@@ -1,0 +1,302 @@
+# verify_ui.py — prueba E2E real de PixelFleet v0.6 (headless Chromium)
+# Uso: ../.venv/Scripts/python tools/verify_ui.py   (desde app/)
+# Cubre: menú/ajustes, arranque, tienda, diplomacia, contratos, hangar/flota,
+# chat, persistencia total (continuar) y borrado de partida.
+# Nota: los clics son reales; solo se aceleran créditos/tiempos de
+# construcción vía evaluate para no hacer el test eterno.
+import sys
+from pathlib import Path
+from playwright.sync_api import sync_playwright
+
+APP = Path(__file__).resolve().parent.parent / 'index.html'
+SHOTS = Path(__file__).resolve().parent / 'shots'
+SHOTS.mkdir(exist_ok=True)
+
+errors = []
+ok = True
+
+def check(cond, label):
+    global ok
+    print(('  ✅ ' if cond else '  ❌ ') + label)
+    if not cond:
+        ok = False
+
+with sync_playwright() as pw:
+    browser = pw.chromium.launch()
+    page = browser.new_page(viewport={'width': 1600, 'height': 900})
+    page.on('pageerror', lambda e: errors.append(str(e)))
+    page.on('console', lambda m: errors.append(m.text) if m.type == 'error' else None)
+
+    # ===== 0. estado limpio: sin save v2 =====
+    page.goto(APP.as_uri())
+    page.evaluate("localStorage.removeItem('pixelfleet_save_v2')")
+    page.reload()
+    page.wait_for_timeout(400)
+
+    print('— menú —')
+    check('NUEVA PARTIDA' in page.locator('#btn-play').inner_text(), 'sin save: botón «▶ NUEVA PARTIDA»')
+
+    print('— ajustes: nombre y color —')
+    page.click('#btn-settings')
+    page.wait_for_timeout(200)
+    check(page.locator('#panel-settings').is_visible(), 'panel de ajustes abre')
+    page.fill('#input-name', 'TesterV6')
+    page.locator('#color-picker .color-dot').nth(2).click()   # #ff6b8a
+    page.wait_for_timeout(200)
+    check(page.evaluate("player.name") == 'TesterV6', 'nombre aplicado al piloto')
+    check(page.evaluate("player.color") == '#ff6b8a', 'color de facción elegido')
+    page.click('#panel-settings .btn-close:not(#btn-wipe)')
+    page.screenshot(path=str(SHOTS / 'ui_menu.png'))
+
+    # ===== 1. partida nueva =====
+    print('— arranque (partida nueva) —')
+    page.click('#btn-play')
+    page.wait_for_timeout(1500)
+    check(page.locator('#prep-banner').is_visible(), 'banner de preparación visible')
+    check(page.locator('#tutorial').is_visible(), 'tutorial visible')
+    check(page.evaluate("bots.length") == 240, '240 bots generados al entrar en partida')
+    check(page.evaluate("bots.filter(b => b.color === player.color).length") == 0,
+          'ningún bot con el color del jugador')
+    check(page.evaluate("Math.floor(player.credits)") >= 40, 'fondos iniciales (40◈)')
+    check(page.evaluate("player.ship") == 'caza' and page.evaluate("hangarShips.length") == 0,
+          'empieza con 1 caza y hangar vacío')
+    check('TesterV6' in page.locator('#hud-name').inner_text(), 'HUD muestra el nombre elegido')
+
+    # ===== 2. tienda =====
+    print('— tienda: compra real con clic —')
+    page.evaluate("player.credits += 100")   # acelerar: no esperar 30 s de ingresos
+    page.click('#toolbar button[data-panel="shop"]')
+    page.wait_for_timeout(300)
+    check(page.locator('#shop').is_visible(), 'icono 🔧 abre la tienda')
+    credits0 = int(page.locator('#shop-credits').inner_text())
+    page.click('#shop-items button[data-key="motor"]')
+    page.wait_for_timeout(400)
+    credits1 = int(page.locator('#shop-credits').inner_text())
+    check(credits1 < credits0, f'comprar Motor descuenta créditos ({credits0} → {credits1})')
+    check(page.evaluate("player.upgrades.motor") == 1, 'mejora Motor nv.1 aplicada')
+
+    # ===== 3. diplomacia =====
+    print('— diplomacia: tributo y guerra —')
+    page.evaluate("player.credits += 150")
+    page.click('#toolbar button[data-panel="diplo"]')
+    page.wait_for_timeout(300)
+    check(page.locator('#diplo').is_visible(), 'icono 🤝 abre diplomacia')
+    check(not page.locator('#shop').is_visible(), 'la tienda se cerró sola')
+    fac = page.locator('#diplo-list button[data-act="tribute"]').first.get_attribute('data-c')
+    page.locator('#diplo-list button[data-act="tribute"]').first.click()
+    page.wait_for_timeout(300)
+    st1 = page.evaluate(f"standings['{fac}']")
+    check(st1 == 40, f'tributo sube relación con {fac} (0 → {st1})')
+    page.locator('#diplo-list button[data-act="war"]').first.click()
+    page.wait_for_timeout(300)
+    st2 = page.evaluate(f"standings['{fac}']")
+    check(st2 <= -30, f'declarar guerra la desploma ({st1} → {st2})')
+    check('GUERRA' in page.locator('#chat-log').inner_text(), 'declaración de guerra anunciada en el chat')
+    page.screenshot(path=str(SHOTS / 'ui_diplo.png'))
+
+    # ===== 4. contratos =====
+    print('— contratos: aceptar —')
+    page.click('#toolbar button[data-panel="contracts"]')
+    page.wait_for_timeout(300)
+    check(page.locator('#contracts').is_visible(), 'icono 📋 abre contratos')
+    page.locator('#contract-offers button[data-id]').first.click()
+    page.wait_for_timeout(300)
+    check(page.evaluate("contracts.active.length") == 1, 'contrato aceptado pasa a activos')
+    check('▶' in page.locator('#contract-active').inner_text(), 'contrato activo visible en el panel')
+
+    # ===== 5. hangar y flota =====
+    print('— hangar: construir → hangar → desplegar —')
+    page.evaluate("player.credits += 200")
+    page.click('#toolbar button[data-panel="hangar"]')
+    page.wait_for_timeout(300)
+    check(page.locator('#hangar').is_visible(), 'icono 🚀 abre el hangar')
+    check(page.locator('#hangar-build').is_visible()
+          and page.locator('#hangar-fleet').is_visible()
+          and page.locator('#hangar-store').is_visible(), 'hangar con 3 secciones')
+    page.click('button[data-build="caza"]')
+    page.wait_for_timeout(300)
+    check(page.evaluate("buildQueue.length") == 1, 'clic en construir mete el caza en cola')
+    check('🏗️' in page.locator('#hangar-qstat').inner_text(), 'cuenta atrás visible sin recargar panel')
+    page.evaluate("buildQueue[0].t = 0.05")   # acelerar construcción
+    page.wait_for_timeout(500)
+    check('construido y en el hangar' in page.locator('#chat-log').inner_text(),
+          'al completarse la nave va AL HANGAR (chat)')
+    check(page.evaluate("hangarShips.length") == 1 and page.evaluate("fleetCount()") == 0,
+          'la nave no sale sola: hangar 1, flota activa 0')
+    check(page.locator('#hangar-store .hangar-item').count() == 1,
+          'la nave aparece en la sección HANGAR sin reabrir el panel')
+
+    print('— flota: roles SEGUIRME / DEFENDER / RECOGER —')
+    page.click('button[data-hact="follow"][data-hi="0"]')
+    page.wait_for_timeout(300)
+    check(page.evaluate("fleetCount()") == 1 and page.evaluate("hangarShips.length") == 0,
+          'SEGUIRME despliega el wingman (hangar vacío)')
+    check(page.evaluate("bots.find(b => b.built).role") == 'follow', 'rol follow asignado')
+    check(page.locator('#hangar-fleet .hangar-item').count() == 1, 'wingman visible en FLOTA ACTIVA')
+    page.click('#hangar-fleet button[data-fact="defend"]')
+    page.wait_for_timeout(300)
+    check(page.evaluate("bots.find(b => b.built).role") == 'defend', 'cambio de rol a DEFENDER')
+    page.click('#hangar-fleet button[data-fact="recall"]')
+    page.wait_for_timeout(300)
+    check(page.evaluate("fleetCount()") == 0 and page.evaluate("hangarShips.length") == 1,
+          'RECOGER devuelve la nave al hangar')
+
+    print('— hangar: PILOTAR —')
+    page.evaluate("player.credits += 200")
+    page.click('button[data-build="avispa"]')
+    page.wait_for_timeout(200)
+    page.evaluate("buildQueue[0].t = 0.05")
+    page.wait_for_timeout(500)
+    check(page.evaluate("hangarShips.join(',')") == 'caza,avispa', 'avispa construida: hangar [caza, avispa]')
+    page.click('button[data-hact="pilot"][data-hi="1"]')
+    page.wait_for_timeout(300)
+    check(page.evaluate("player.ship") == 'avispa'
+          and page.evaluate("hangarShips.filter(t => t === 'caza').length") == 2,
+          'PILOTAR: pilotas la avispa y tu caza pasa al hangar')
+    check('Avispa' in page.locator('#hangar-current').inner_text(), 'panel muestra «Pilotando: Avispa»')
+    page.screenshot(path=str(SHOTS / 'ui_hangar.png'))
+
+    # ===== 5b. control RTS de flota (v0.7) =====
+    print('— v0.7: guarnición + selección por cuadro + órdenes —')
+    page.click('button[data-hact="garrison"][data-hi="0"]')
+    page.wait_for_timeout(300)
+    check(page.evaluate("bots.find(b => b.built).role") == 'garrison',
+          'GUARNICIÓN: la nave desplegada orbita la capital')
+    check(page.evaluate("fleetCount()") == 1, 'una nave en flota activa')
+    page.keyboard.press('h')   # cerrar el hangar para que el canvas reciba los clics
+    page.wait_for_timeout(200)
+    # acercar la cámara a la nave (la cámara sigue al jugador; así la nave queda visible)
+    page.evaluate("(() => { const b = bots.find(x => x.built); cam.zoomTarget = 0.6; })()")
+    page.wait_for_timeout(700)
+    pos = page.evaluate("(() => { const b = bots.find(x => x.built && x.alive);"
+                        " return { x: 2*((b.x - cam.x)*cam.zoom + VW/2), y: 2*((b.y - cam.y)*cam.zoom + VH/2) }; })()")
+    page.keyboard.down('Shift')
+    page.mouse.move(pos['x'] - 90, pos['y'] - 90)
+    page.mouse.down()
+    page.mouse.move(pos['x'] + 90, pos['y'] + 90, steps=6)
+    page.mouse.up()
+    page.keyboard.up('Shift')
+    page.wait_for_timeout(150)
+    check(page.evaluate("selection.size") == 1, 'SHIFT+arrastre selecciona la nave (cuadro de selección)')
+    check(page.evaluate("projectiles.length") == 0, 'el arrastre de selección NO dispara')
+    page.screenshot(path=str(SHOTS / 'ui_rts_select.png'))
+
+    page.mouse.click(500, 300)
+    page.wait_for_timeout(200)
+    check(page.evaluate("bots.find(b => b.built).role") == 'move', 'CLIC con selección = orden MOVER al punto')
+    check(page.evaluate("bots.find(b => b.built).ox !== null"), 'la orden guarda el destino (ox/oy)')
+    check(page.evaluate("projectiles.length") == 0, 'el clic de orden tampoco dispara')
+
+    page.mouse.click(600, 350, button='right')
+    page.wait_for_timeout(200)
+    check(page.locator('#fleet-menu').is_visible(), 'CLIC DERECHO abre el menú de órdenes')
+    check('1 nave(s)' in page.locator('#fleet-menu').inner_text(), 'el menú indica cuántas naves reciben la orden')
+    page.click('#fleet-menu button[data-fm="deflist"]')
+    page.wait_for_timeout(150)
+    check(page.locator('#fm-planets').is_visible()
+          and 'CAPITAL' in page.locator('#fm-planets').inner_text(),
+          'DEFENDER despliega la lista de planetas propios (★ capital)')
+    page.locator('#fm-planets button[data-fm="defp"]:has-text("★")').first.click()
+    page.wait_for_timeout(200)
+    check(page.evaluate("bots.find(b => b.built).role") == 'defendP', 'orden DEFENDER planeta aplicada (rol defendP)')
+    check(page.evaluate("bots.find(b => b.built).oplanet") == page.evaluate("planets.indexOf(playerCapital)"),
+          'el planeta a defender es la capital (oplanet correcto)')
+    check(not page.locator('#fleet-menu').is_visible(), 'el menú se cierra tras elegir orden')
+    page.screenshot(path=str(SHOTS / 'ui_rts_menu.png'))
+
+    page.mouse.click(650, 380, button='right')
+    page.wait_for_timeout(150)
+    page.click('#fleet-menu button[data-fm="attack"]')
+    page.wait_for_timeout(150)
+    check(page.evaluate("bots.find(b => b.built).role") == 'attack', 'orden ATACAR ESTA ZONA aplicada')
+
+    page.keyboard.press('Escape')
+    page.wait_for_timeout(100)
+    check(page.evaluate("selection.size") == 0, 'ESC suelta la selección')
+    page.mouse.move(500, 300)
+    page.mouse.down()
+    page.wait_for_timeout(400)
+    page.mouse.up()
+    check(page.evaluate("projectiles.length") > 0, 'sin selección el clic vuelve a disparar')
+
+    # ===== 6. chat =====
+    print('— chat —')
+    page.keyboard.press('Enter')
+    page.wait_for_timeout(200)
+    check(page.locator('#chat-input').is_visible(), 'ENTER abre el chat')
+    page.keyboard.type('hola flota')   # contiene "t": no debe cerrar el tutorial ni abrir paneles
+    page.keyboard.press('Enter')
+    page.wait_for_timeout(200)
+    check('hola flota' in page.locator('#chat-log').inner_text(), 'mensaje enviado aparece en el log')
+    check('TesterV6' in page.locator('#chat-log').inner_text(), 'mensaje firmado con el nombre del piloto')
+
+    # ===== 7. zoom estratégico =====
+    print('— zoom estratégico —')
+    page.mouse.move(800, 450)
+    for _ in range(14):
+        page.mouse.wheel(0, 600)
+        page.wait_for_timeout(60)
+    page.wait_for_timeout(800)
+    page.screenshot(path=str(SHOTS / 'ui_zoom_out.png'))
+    for _ in range(20):
+        page.mouse.wheel(0, -600)
+        page.wait_for_timeout(50)
+    page.wait_for_timeout(800)
+    page.screenshot(path=str(SHOTS / 'ui_zoom_in.png'))
+
+    # ===== 8. persistencia total: recargar y continuar =====
+    print('— persistencia: CONTINUAR PARTIDA —')
+    page.evaluate("saveGame()")
+    saved = page.evaluate("({credits: Math.floor(player.credits), bots: bots.length, "
+                          "hangar: hangarShips.join(','), ship: player.ship, "
+                          "kills: player.kills, motor: player.upgrades.motor})")
+    page.reload()
+    page.wait_for_timeout(500)
+    check('CONTINUAR PARTIDA' in page.locator('#btn-play').inner_text(), 'con save: botón «▶ CONTINUAR PARTIDA»')
+    check(page.locator('#input-name').input_value() == 'TesterV6', 'nombre precargado en ajustes')
+    page.click('#btn-play')
+    page.wait_for_timeout(1500)
+    check(page.evaluate("bots.length") == saved['bots'], f"bots restaurados ({saved['bots']})")
+    check(abs(page.evaluate("Math.floor(player.credits)") - saved['credits']) < 10,
+          f"créditos restaurados (~{saved['credits']})")
+    check(page.evaluate("hangarShips.join(',')") == saved['hangar'], f"hangar restaurado ({saved['hangar']})")
+    check(page.evaluate("player.ship") == saved['ship'], f"nave actual restaurada ({saved['ship']})")
+    check(page.evaluate("player.upgrades.motor") == saved['motor'], 'mejoras restauradas')
+    check(page.evaluate(f"standings['{fac}']") <= -30, 'guerra declarada sigue en pie tras recargar')
+    check(page.evaluate("playerCapital !== null && playerCapital.capital === true"),
+          'capital restaurada por índice')
+    check(page.evaluate("bots.find(b => b.built) && bots.find(b => b.built).role") == 'attack',
+          'orden RTS restaurada tras recargar (rol attack)')
+    check(page.evaluate("bots.find(b => b.built) && bots.find(b => b.built).ox !== null"),
+          'destino de la orden restaurado (ox/oy)')
+    check(not page.locator('#tutorial').is_visible(), 'sin tutorial al continuar')
+    page.screenshot(path=str(SHOTS / 'ui_continuar.png'))
+
+    # ===== 9. borrar partida =====
+    print('— ajustes: BORRAR PARTIDA —')
+    page.evaluate("saveGame()")
+    page.click('#tb-menu')
+    page.wait_for_timeout(300)
+    check(page.locator('#menu').is_visible(), 'vuelta al menú con 🏠')
+    page.click('#btn-settings')
+    page.wait_for_timeout(200)
+    page.once('dialog', lambda d: d.accept())
+    page.click('#btn-wipe')
+    page.wait_for_timeout(1000)   # confirm aceptado → location.reload()
+    check(page.evaluate("localStorage.getItem('pixelfleet_save_v2')") is None, 'save v2 eliminado')
+    check('NUEVA PARTIDA' in page.locator('#btn-play').inner_text(), 'botón vuelve a «▶ NUEVA PARTIDA»')
+
+    # ===== 10. equilibrio y errores =====
+    print('— clasificación —')
+    page.click('#btn-play')
+    page.wait_for_timeout(1500)
+    board = page.locator('#board-list').inner_text()
+    print('  clasificación:', board.replace(chr(10), ' | ')[:200])
+
+    print('— errores JS —')
+    check(not errors, 'sin errores de consola/página' + ('' if not errors else ': ' + '; '.join(errors[:3])))
+
+    browser.close()
+
+print('RESULTADO:', 'TODO OK' if ok else 'FALLOS DETECTADOS')
+sys.exit(0 if ok else 1)

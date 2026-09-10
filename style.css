@@ -1,0 +1,239 @@
+/* ===== PIXEL FLEET — estilo retro ===== */
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  background: #05060e; color: #e8f0ff;
+  font-family: 'Courier New', monospace;
+  overflow: hidden; user-select: none;
+}
+.hidden { display: none !important; }
+
+/* ===== MENÚ ===== */
+#menu {
+  position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
+  background: radial-gradient(ellipse at center, #0b1030 0%, #05060e 70%);
+}
+.stars-bg { position: absolute; inset: 0; pointer-events: none;
+  background-image:
+    radial-gradient(1px 1px at 20% 30%, #fff, transparent),
+    radial-gradient(1px 1px at 40% 70%, #9cf, transparent),
+    radial-gradient(2px 2px at 60% 20%, #fff, transparent),
+    radial-gradient(1px 1px at 80% 50%, #fda, transparent),
+    radial-gradient(1px 1px at 10% 80%, #fff, transparent),
+    radial-gradient(2px 2px at 90% 90%, #9cf, transparent),
+    radial-gradient(1px 1px at 50% 50%, #fff, transparent),
+    radial-gradient(1px 1px at 30% 90%, #fda, transparent);
+  animation: twinkle 3s infinite alternate;
+}
+@keyframes twinkle { from {opacity:.5} to {opacity:1} }
+.menu-box { text-align: center; z-index: 2; }
+.title { font-size: 72px; letter-spacing: 6px; color: #7ef9ff;
+  text-shadow: 4px 4px 0 #16324f, 8px 8px 0 #0a1628; }
+.title span { color: #ffd166; text-shadow: 4px 4px 0 #5a3b0e, 8px 8px 0 #2a1e08; }
+.subtitle { margin: 10px 0 40px; color: #8fa8d0; letter-spacing: 3px; }
+.menu-buttons { display: flex; flex-direction: column; gap: 16px; align-items: center; }
+.btn { font-family: inherit; font-size: 20px; letter-spacing: 3px; padding: 14px 46px;
+  cursor: pointer; background: #101a33; color: #7ef9ff; border: 3px solid #7ef9ff;
+  box-shadow: 0 6px 0 #16324f; transition: transform .05s; }
+.btn:hover { background: #7ef9ff; color: #05060e; transform: translateY(2px); box-shadow: 0 4px 0 #16324f; }
+.footer { margin-top: 40px; color: #44557a; font-size: 12px; }
+
+/* ===== PANELES ===== */
+.panel { position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%);
+  background: #0b1030; border: 3px solid #7ef9ff; box-shadow: 0 0 0 6px #05060e, 0 0 40px #16324f;
+  padding: 28px 36px; z-index: 10; min-width: 360px; max-width: 520px; text-align: center; }
+.panel h2 { color: #ffd166; letter-spacing: 3px; margin: 12px 0 6px; font-size: 18px; }
+.panel p { margin: 5px 0; color: #b8c8e8; font-size: 13px; line-height: 1.5; text-align: left; }
+.panel b { color: #7ef9ff; }
+.panel input { font-family: inherit; font-size: 18px; padding: 8px; background: #05060e;
+  color: #7ef9ff; border: 2px solid #44557a; text-align: center; width: 100%; margin: 6px 0 12px; }
+.btn-close { margin-top: 18px; font-size: 14px; padding: 8px 24px; }
+#color-picker { display: flex; gap: 8px; justify-content: center; margin: 8px 0 4px; }
+.color-dot { width: 26px; height: 26px; border: 3px solid transparent; cursor: pointer; }
+.color-dot.selected { border-color: #fff; }
+
+/* ===== JUEGO ===== */
+#game { position: fixed; inset: 0; }
+#canvas { width: 100vw; height: 100vh; image-rendering: pixelated; display: block; }
+
+/* HUD esquina superior izquierda */
+#hud { position: fixed; top: 12px; left: 14px; z-index: 5; pointer-events: none; }
+#hud-name { font-size: 20px; letter-spacing: 2px; text-shadow: 2px 2px 0 #000; }
+#hud-coords { font-size: 13px; color: #8fa8d0; text-shadow: 1px 1px 0 #000; }
+#hud-online { font-size: 13px; color: #7ef9ff; text-shadow: 1px 1px 0 #000; margin-top: 6px; }
+
+/* Clasificación */
+#board { position: fixed; top: 12px; right: 14px; z-index: 5; width: 210px;
+  background: rgba(5,6,14,.75); border: 2px solid #44557a; padding: 8px 10px; pointer-events: none; }
+#board h3 { font-size: 12px; color: #ffd166; letter-spacing: 2px; margin-bottom: 6px; }
+#board-list { list-style: none; }
+#board-list li { font-size: 11px; color: #b8c8e8; padding: 2px 0; display: flex; justify-content: space-between; }
+#board-list li.me { color: #ffd166; font-weight: bold; }
+#board-list li .c { color: #7ef9ff; }
+
+/* Chat */
+#chat { position: fixed; left: 14px; bottom: 14px; z-index: 6; width: 320px; }
+#chat-log { max-height: 140px; overflow-y: auto; font-size: 11px; line-height: 1.5;
+  padding: 4px 6px; background: rgba(5,6,14,.55); margin-bottom: 4px; }
+#chat-log div { word-wrap: break-word; }
+#chat-log .sys { color: #8fa8d0; font-style: italic; }
+#chat-input { display: none; width: 100%; font-family: inherit; font-size: 12px; padding: 6px;
+  background: rgba(5,6,14,.9); color: #e8f0ff; border: 2px solid #44557a; }
+
+/* Minimapa */
+#minimap { position: fixed; bottom: 14px; right: 14px; z-index: 5;
+  border: 3px solid #44557a; background: #05060e; }
+#minimap canvas { display: block; image-rendering: pixelated; }
+
+/* Barras inferiores */
+#bars { position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%);
+  z-index: 5; display: flex; gap: 14px; align-items: center; pointer-events: none; }
+.bar { display: flex; align-items: center; gap: 6px; font-size: 11px; color: #8fa8d0; }
+.bar-bg { width: 120px; height: 10px; background: #0a1628; border: 2px solid #44557a; }
+#hp-fill { height: 100%; width: 100%; background: #ff6b8a; transition: width .15s; }
+#fuel-fill { height: 100%; width: 100%; background: #ffd166; transition: width .15s; }
+#credits { font-size: 15px; color: #7ef9ff; text-shadow: 1px 1px 0 #000; }
+#kills { font-size: 13px; color: #ff6b8a; text-shadow: 1px 1px 0 #000; }
+
+/* Barra de captura */
+#capbar { position: fixed; top: 64px; left: 50%; transform: translateX(-50%); z-index: 5; text-align: center; pointer-events: none; }
+#capbar-label { font-size: 12px; letter-spacing: 2px; color: #ffd166; text-shadow: 1px 1px 0 #000; margin-bottom: 4px; }
+.capbar-bg { width: 220px; height: 12px; background: #0a1628; border: 2px solid #ffd166; }
+#capbar-fill { height: 100%; width: 0%; background: #ffd166; }
+
+/* Mensaje de reaparición */
+#respawn-msg { position: fixed; top: 40%; left: 50%; transform: translate(-50%,-50%);
+  z-index: 8; font-size: 26px; color: #ff6b8a; letter-spacing: 4px;
+  text-shadow: 3px 3px 0 #000; text-align: center; }
+
+/* ===== PANELES IN-GAME v0.3 (tienda / diplomacia) ===== */
+.game-panel {
+  position: fixed; top: 60px; left: 50%; transform: translateX(-50%);
+  z-index: 9; width: 380px; max-height: 70vh; overflow-y: auto;
+  background: rgba(11,16,48,.95); border: 3px solid #ffd166;
+  box-shadow: 0 0 0 4px #05060e; padding: 14px 16px;
+}
+.game-panel h3 { color: #ffd166; letter-spacing: 3px; font-size: 15px; margin-bottom: 8px; }
+.panel-sub { font-size: 12px; color: #7ef9ff; margin-bottom: 10px; }
+.panel-hint { font-size: 11px; color: #44557a; text-align: center; margin-top: 10px; }
+.panel-hint b { color: #8fa8d0; }
+
+/* Tienda */
+.shop-item {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 7px 4px; border-bottom: 1px solid #1a2a4a; font-size: 12px;
+}
+.shop-item .info b { color: #e8f0ff; }
+.shop-item .info span { color: #8fa8d0; display: block; font-size: 10px; }
+.shop-item .pips { color: #ffd166; letter-spacing: 2px; margin: 0 6px; font-size: 11px; }
+.shop-item button {
+  font-family: inherit; font-size: 11px; padding: 5px 10px; cursor: pointer;
+  background: #101a33; color: #7ef9ff; border: 2px solid #7ef9ff;
+}
+.shop-item button:hover { background: #7ef9ff; color: #05060e; }
+.shop-item button:disabled { opacity: .3; cursor: default; }
+.shop-item button:disabled:hover { background: #101a33; color: #7ef9ff; }
+.shop-item.maxed button { display: none; }
+
+/* Diplomacia */
+.diplo-row { display: flex; align-items: center; gap: 8px; padding: 7px 4px; border-bottom: 1px solid #1a2a4a; font-size: 12px; }
+.diplo-row .dot { width: 12px; height: 12px; flex-shrink: 0; }
+.diplo-row .name { flex: 1; }
+.diplo-row .rel { font-size: 10px; width: 62px; text-align: right; }
+.diplo-row button { font-family: inherit; font-size: 10px; padding: 4px 8px; cursor: pointer; background: #101a33; color: #8aff80; border: 2px solid #8aff80; }
+.diplo-row button:hover { background: #8aff80; color: #05060e; }
+.diplo-row button.war { color: #ff6b8a; border-color: #ff6b8a; }
+.diplo-row button.war:hover { background: #ff6b8a; color: #05060e; }
+.rel-status { display: block; font-size: 9px; color: #44557a; }
+
+/* ===== v0.4 ===== */
+#room-box { margin-top: 18px; }
+#input-room { font-family: inherit; font-size: 13px; letter-spacing: 3px; padding: 8px;
+  background: #05060e; color: #8aff80; border: 2px solid #44557a; text-align: center;
+  width: 260px; text-transform: uppercase; }
+#input-room:focus { border-color: #8aff80; outline: none; }
+
+.panel-sub2 { color: #8fa8d0; font-size: 11px; letter-spacing: 2px; margin: 10px 0 4px; }
+
+/* Contratos */
+.contract { border: 2px solid #44557a; padding: 8px 10px; margin: 6px 0; font-size: 12px; }
+.contract.active { border-color: #ffd166; }
+.contract .ctitle { color: #ffd166; font-weight: bold; }
+.contract .cdesc { color: #b8c8e8; font-size: 11px; margin: 3px 0; }
+.contract .cprog { color: #7ef9ff; font-size: 11px; }
+.contract button { font-family: inherit; font-size: 11px; padding: 4px 10px; margin-top: 4px;
+  cursor: pointer; background: #101a33; color: #8aff80; border: 2px solid #8aff80; }
+.contract button:hover { background: #8aff80; color: #05060e; }
+.contract.done .ctitle { color: #8aff80; }
+
+/* Hangar */
+.hangar-item { display: flex; justify-content: space-between; align-items: center;
+  padding: 8px 4px; border-bottom: 1px solid #1a2a4a; font-size: 12px; }
+.hangar-item .info b { color: #e8f0ff; }
+.hangar-item .info span { color: #8fa8d0; display: block; font-size: 10px; }
+.hangar-item button { font-family: inherit; font-size: 11px; padding: 5px 10px; cursor: pointer;
+  background: #101a33; color: #7ef9ff; border: 2px solid #7ef9ff; }
+.hangar-item button:hover { background: #7ef9ff; color: #05060e; }
+.hangar-item.selected { background: rgba(126,249,255,.08); }
+.hangar-item.selected button { color: #8aff80; border-color: #8aff80; }
+/* v0.6: filas de flota con varios botones de rol */
+.hangar-item .acts { display: flex; gap: 4px; flex-shrink: 0; }
+.hangar-item .acts button { font-size: 9px; padding: 4px 6px; }
+.hangar-item button:disabled { opacity: .3; cursor: default; }
+.hangar-item button:disabled:hover { background: #101a33; color: #7ef9ff; }
+.hangar-empty { color: #44557a; font-size: 11px; padding: 6px 4px; }
+#hangar-qstat, #hangar-fstat, #hangar-hstat { color: #7ef9ff; letter-spacing: 0; }
+#hangar-where { color: #ff9f5a; }
+#btn-wipe { color: #ff6b8a; border-color: #ff6b8a; box-shadow: 0 6px 0 #4a1220; }
+#btn-wipe:hover { background: #ff6b8a; color: #05060e; box-shadow: 0 4px 0 #4a1220; }
+
+/* Torneo */
+#tourney { position: fixed; top: 12px; left: 50%; transform: translateX(-50%);
+  z-index: 7; background: rgba(11,16,48,.9); border: 3px solid #8aff80;
+  padding: 8px 18px; font-size: 14px; letter-spacing: 2px; color: #8aff80;
+  text-shadow: 1px 1px 0 #000; pointer-events: none; text-align: center; }
+#tourney small { display: block; font-size: 10px; color: #8fa8d0; letter-spacing: 1px; }
+
+/* ===== v0.4.1 — móvil ===== */
+#canvas { touch-action: none; }
+
+/* ===== v0.5 — banner de preparación ===== */
+#prep-banner { position: fixed; top: 44px; left: 50%; transform: translateX(-50%);
+  z-index: 7; background: rgba(11,16,48,.9); border: 3px solid #7ef9ff;
+  padding: 8px 18px; font-size: 14px; letter-spacing: 2px; color: #7ef9ff;
+  text-shadow: 1px 1px 0 #000; pointer-events: none; text-align: center; }
+
+/* ===== v0.5.2 — tutorial guiado ===== */
+#tutorial { position: fixed; bottom: 64px; left: 50%; transform: translateX(-50%);
+  z-index: 8; max-width: 520px; background: rgba(11,16,48,.92); border: 3px solid #ffd166;
+  box-shadow: 0 0 0 4px #05060e; padding: 10px 16px; font-size: 13px; line-height: 1.5;
+  color: #e8f0ff; text-align: left; pointer-events: none; }
+#tutorial b { color: #ffd166; }
+#tutorial .tut-skip { color: #44557a; font-size: 10px; }
+
+/* ===== v0.5.3 — barra lateral de accesos ===== */
+#toolbar { position: fixed; left: 14px; top: 50%; transform: translateY(-50%);
+  z-index: 6; display: flex; flex-direction: column; gap: 8px; }
+#toolbar button {
+  width: 44px; height: 44px; font-size: 20px; cursor: pointer;
+  background: rgba(11,16,48,.9); border: 3px solid #44557a;
+  box-shadow: 0 4px 0 #0a1628; transition: transform .05s;
+}
+#toolbar button:hover { border-color: #7ef9ff; transform: translateY(1px); box-shadow: 0 3px 0 #0a1628; }
+#toolbar button.active { border-color: #ffd166; background: rgba(38,30,8,.95); }
+
+/* ===== v0.7 — menú contextual de órdenes de flota (botón derecho) ===== */
+#fleet-menu {
+  position: fixed; z-index: 12; width: 230px;
+  background: rgba(11,16,48,.97); border: 3px solid #7ef9ff;
+  box-shadow: 0 0 0 4px #05060e; padding: 8px;
+}
+#fleet-menu .fm-title { font-size: 11px; color: #ffd166; letter-spacing: 1px; margin-bottom: 6px; }
+#fleet-menu button {
+  display: block; width: 100%; margin: 3px 0; text-align: left;
+  font-family: inherit; font-size: 11px; padding: 5px 8px; cursor: pointer;
+  background: #101a33; color: #7ef9ff; border: 2px solid #44557a;
+}
+#fleet-menu button:hover { border-color: #7ef9ff; background: #16224a; }
+#fleet-menu #fm-planets { margin: 2px 0 4px 14px; border-left: 2px solid #44557a; padding-left: 6px; }
+#fleet-menu #fm-planets button { color: #8aff80; border-color: #2d4a2d; font-size: 10px; }
+#fleet-menu #fm-planets button:hover { border-color: #8aff80; }
