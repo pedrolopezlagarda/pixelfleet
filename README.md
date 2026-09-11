@@ -1,4 +1,4 @@
-# 🚀 PIXEL FLEET — v0.8
+# 🚀 PIXEL FLEET — v0.9
 
 Juego de **estrategia espacial** vista cenital, pixel-art, multijugador.
 **Todas las facciones empiezan de cero**: su planeta capital y **una sola nave**,
@@ -39,6 +39,7 @@ muestra el atajo de teclado). No hace falta memorizar nada.
 | **F** | Panel de diplomacia |
 | **C** | Contratos |
 | **H** | Hangar: construir, desplegar y organizar tu flota |
+| **TAB** | Panel de imperio: planetas, flota, guerras y alianzas de la galaxia |
 | **T** | Cerrar el tutorial guiado |
 | **ENTER** | Abrir chat |
 | **ESC** | Cerrar paneles / chat / soltar la selección de flota |
@@ -101,6 +102,19 @@ Tus naves desplegadas se controlan como en un **Age of Empires**:
   órdenes (no dispara); **al dar cualquier orden la selección se suelta sola**
   (v0.7.1) y vuelves a pilotar y disparar al instante.
 - Las órdenes **se guardan en la partida**: al continuar, tu flota sigue ejecutándolas.
+
+### 🌫️ Niebla de guerra (v0.9)
+- Solo ves lo que está a **600 de tus naves** o **1000 de tus planetas**: naves
+  enemigas, jugadores, disparos y explosiones fuera de visión **no se dibujan**.
+- Lo explorado **queda para siempre**: atenuado, con el **último dueño conocido**
+  de cada planeta. El mapa explorado **se guarda** con la partida.
+- El minimapa y la clasificación respetan la niebla: de otros imperios solo ves
+  lo que conoces (planetas vistos y naves avistadas).
+
+### 🏛️ Panel de imperio (v0.9)
+**TAB** o icono 🏛️: resumen del imperio (planetas, ◈/s, flota, hangar, cola de
+construcción), tus planetas con escudo y producción, tu flota con su rol y el
+**estado diplomático de la galaxia** (guerras ⚔️ y alianzas 🤝 entre facciones IA).
 
 ### 🌌 Facciones imperio: IA real (v0.8)
 - **Inicio de cero**: galaxia virgen, sin planetas pre-conquistados. Cada facción
@@ -197,7 +211,7 @@ Posiciones a 10 Hz, disparos y chat retransmitidos **por sala**.
 | `style.css` | Estilo retro pixelado |
 | `game.js` | Motor completo + sistemas v0.3/v0.4/v0.5/v0.6 |
 | `server.js` | Servidor WebSocket multijugador con salas |
-| `tools/verify_ui.py` | Test E2E real (Playwright): 84 checks — menús, clics, flota, RTS, facciones IA, persistencia, zoom |
+| `tools/verify_ui.py` | Test E2E real (Playwright): 101 checks — menús, clics, flota, RTS, facciones IA, niebla, persistencia, zoom |
 | `README.md` | Este documento |
 
 ### Tests E2E
@@ -216,7 +230,7 @@ jefes de facción · estaciones espaciales comerciales · mapas con agujeros de 
 
 ---
 
-*v0.8 · facciones imperio con IA real (conquista, minería, diplomacia estratégica) · control RTS · persistencia total*
+*v0.9 · niebla de guerra + panel de imperio · facciones con IA real · control RTS · persistencia total*
 
 > ⚠️ El save v0.8 (`pixelfleet_save_v2`) no es compatible con partidas de v0.5-v0.7:
 > al entrar por primera vez empezarás una partida nueva.

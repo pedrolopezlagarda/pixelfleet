@@ -335,6 +335,81 @@ with sync_playwright() as pw:
     page.evaluate("setRel(window.__wa.color, window.__wb.color, 0)")
     page.screenshot(path=str(SHOTS / 'ui_facciones.png'))
 
+    # ===== 5d. v0.9: niebla de guerra + panel de imperio =====
+    print('— v0.9: niebla de guerra + panel de imperio —')
+    page.wait_for_timeout(400)   # fogUpdate corre a 4 Hz
+    tot = page.evaluate("explored.length")
+    ex0 = page.evaluate("explored.reduce((a, v) => a + v, 0)")
+    check(0 < ex0 < tot * 0.5, f'niebla activa: explorado {ex0}/{tot} celdas al inicio')
+    # una capital enemiga lejana y neutral (ni la de la guerra ni la provocada): no explorada ni visible
+    page.evaluate(f"""(() => {{
+      const c = FACTION_COLORS.find(x => x !== player.color && x !== '{fac}' && x !== '{other}');
+      window.__fcap = planets.find(p => p.capital && p.owner === c);
+    }})()""")
+    check(not page.evaluate("fogExplored(window.__fcap.x, window.__fcap.y)"),
+          'la capital enemiga lejana NO está explorada')
+    check(not page.evaluate("fogVisible(window.__fcap.x, window.__fcap.y)"),
+          'ni bajo visión')
+    # acércate (teletransporte de prueba): queda explorada y con dueño conocido
+    page.evaluate("player.x = window.__fcap.x + 300; player.y = window.__fcap.y; player.vx = player.vy = 0;")
+    page.wait_for_timeout(500)
+    check(page.evaluate("fogExplored(window.__fcap.x, window.__fcap.y)"), 'al acercarte, la capital queda explorada')
+    check(page.evaluate("window.__fcap.knownOwner") == page.evaluate("window.__fcap.owner"),
+          'y recuerdas quién la gobierna (último dueño conocido)')
+    # las naves enemigas solo se ven bajo visión: traemos una junto a ti y otra lejos
+    page.evaluate("""(() => {
+      const c = window.__fcap.owner;
+      window.__shipNear = bots.find(x => x.imp && x.alive && x.color === c) ||
+                          bots.find(x => x.imp && x.alive);
+      window.__shipFar = bots.find(x => x.imp && x.alive && x !== window.__shipNear);
+      window.__shipNear.x = player.x + 200; window.__shipNear.y = player.y;
+      if (window.__shipFar) {
+        // buscar un punto fuera de TODA visión (jugador, wingmen, planetas propios)
+        const pts = [[player.x, player.y, 700]];
+        for (const p of planets) if (p.owner === player.color) pts.push([p.x, p.y, 1100]);
+        for (const w of bots) if (w.built && w.alive) pts.push([w.x, w.y, 700]);
+        outer: for (let x = 400; x < WORLD.w; x += 500) for (let y = 400; y < WORLD.h; y += 500) {
+          let ok = true;
+          for (const q of pts) if ((x - q[0]) ** 2 + (y - q[1]) ** 2 < q[2] * q[2]) { ok = false; break; }
+          if (ok) { window.__shipFar.x = x; window.__shipFar.y = y; break outer; }
+        }
+      }
+    })()""")
+    page.wait_for_timeout(500)
+    check(page.evaluate("fogVisible(window.__shipNear.x, window.__shipNear.y)"),
+          'una nave enemiga junto a ti SÍ se ve (bajo visión)')
+    check(page.evaluate("window.__shipFar ? !fogVisible(window.__shipFar.x, window.__shipFar.y) : true"),
+          'una nave enemiga lejos queda oculta en la niebla')
+    # volver a casa para el resto del test
+    page.evaluate("player.x = playerCapital.x + 150; player.y = playerCapital.y; player.vx = player.vy = 0;")
+    page.wait_for_timeout(400)
+    check(page.evaluate("fogVisible(playerCapital.x, playerCapital.y)"), 'tu capital siempre bajo visión')
+
+    # panel de imperio con TAB
+    page.keyboard.press('Tab')
+    page.wait_for_timeout(300)
+    check(page.locator('#empire').is_visible(), 'TAB abre el panel de imperio')
+    body = page.locator('#empire-body').inner_text()
+    check('CAPITAL' in body, 'el panel lista tu capital')
+    check('🛰' in body and ('atacando' in body or 'siguiéndote' in body), 'el panel lista la flota con su rol')
+    check('Áurea' in body or 'Carmesí' in body or 'Aqua' in body, 'el panel lista las facciones de la galaxia')
+    page.evaluate(f"setRel('{other}', FACTION_COLORS.find(c => c !== player.color && c !== '{other}' && c !== '{fac}'), -100)")
+    page.wait_for_timeout(700)   # el panel se re-renderiza a 2 Hz
+    check('GUERRA:' in page.locator('#empire-body').inner_text(), 'el panel muestra guerras entre facciones IA')
+    page.evaluate(f"setRel('{other}', FACTION_COLORS.find(c => c !== player.color && c !== '{other}' && c !== '{fac}'), 0)")
+    page.screenshot(path=str(SHOTS / 'ui_imperio.png'))
+    page.keyboard.press('Escape')
+    page.wait_for_timeout(200)
+    check(not page.locator('#empire').is_visible(), 'ESC cierra el panel de imperio')
+    page.click('#toolbar button[data-panel="empire"]')
+    page.wait_for_timeout(200)
+    check(page.locator('#empire').is_visible(), 'el icono 🏛️ de la toolbar abre el panel')
+    check(page.locator('#toolbar button[data-panel="empire"]').get_attribute('class') and
+          'active' in page.locator('#toolbar button[data-panel="empire"]').get_attribute('class'),
+          'el icono queda resaltado con el panel abierto')
+    page.keyboard.press('Escape')
+    page.wait_for_timeout(150)
+
     # ===== 6. chat =====
     print('— chat —')
     page.keyboard.press('Enter')
@@ -364,6 +439,7 @@ with sync_playwright() as pw:
     print('— persistencia: CONTINUAR PARTIDA —')
     # congelar la construcción de las facciones para que el recuento sea determinista
     page.evaluate("for (const c in facState) { facState[c].building = false; facState[c].credits = 0; }")
+    fog0 = page.evaluate("explored.reduce((a, v) => a + v, 0)")
     page.evaluate("saveGame()")
     saved = page.evaluate("({credits: Math.floor(player.credits), bots: bots.length, "
                           "hangar: hangarShips.join(','), ship: player.ship, "
@@ -388,6 +464,8 @@ with sync_playwright() as pw:
     check(page.evaluate("bots.find(b => b.built) && bots.find(b => b.built).ox !== null"),
           'destino de la orden restaurado (ox/oy)')
     check(not page.locator('#tutorial').is_visible(), 'sin tutorial al continuar')
+    check(page.evaluate("explored.reduce((a, v) => a + v, 0)") >= fog0,
+          f'mapa explorado restaurado ({fog0} celdas)')
     page.screenshot(path=str(SHOTS / 'ui_continuar.png'))
 
     # ===== 9. borrar partida =====

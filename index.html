@@ -21,7 +21,7 @@
       <div id="room-box">
         <input id="input-room" maxlength="8" placeholder="CÓDIGO DE SALA (opcional)">
       </div>
-      <p class="footer">v0.7 · control RTS de flota · persistencia total</p>
+      <p class="footer">v0.9 · niebla de guerra · facciones con IA · control RTS</p>
     </div>
 
     <div id="panel-help" class="panel hidden">
@@ -37,7 +37,9 @@
       <p><b>ESC</b> — soltar la selección</p>
       <p><b>ESPACIO</b> — impulso (gasta combustible)</p>
       <p><b>B</b> — tienda &nbsp;·&nbsp; <b>F</b> — diplomacia &nbsp;·&nbsp; <b>C</b> — contratos &nbsp;·&nbsp; <b>H</b> — hangar</p>
-      <p><b>ENTER</b> — chat &nbsp;·&nbsp; <b>M</b> — menú</p>
+      <p><b>TAB</b> — panel de imperio (planetas, flota, estado de la galaxia) &nbsp;·&nbsp; <b>ENTER</b> — chat &nbsp;·&nbsp; <b>M</b> — menú</p>
+      <h2>NIEBLA DE GUERRA</h2>
+      <p>Solo ves lo que está cerca de tus naves y planetas; el resto queda oculto. Lo explorado se queda atenuado en el mapa con el último dueño conocido. La clasificación solo muestra lo que conoces de cada imperio.</p>
       <h2>ESCUDOS Y SALAS</h2>
       <p>Los planetas conquistados tienen <b>escudo</b>: dispara para destruirlo antes de capturar. Escribe un <b>código de sala</b> en el menú para jugar solo con tus amigos; en sala, el primero en lograr <b>10 bajas</b> gana el torneo.</p>
       <h2>PROGRESO</h2>
@@ -106,6 +108,7 @@
 
     <!-- Barra lateral de accesos (v0.5.3) -->
     <div id="toolbar">
+      <button data-panel="empire"    title="🏛️ Imperio  [TAB]">🏛️</button>
       <button data-panel="hangar"    title="🚀 Hangar y construcción  [H]">🚀</button>
       <button data-panel="shop"      title="🔧 Tienda de mejoras  [B]">🔧</button>
       <button data-panel="diplo"     title="🤝 Diplomacia  [F]">🤝</button>
@@ -152,6 +155,13 @@
       <h4 class="panel-sub2">HANGAR <span id="hangar-hstat"></span></h4>
       <div id="hangar-store"></div>
       <p class="panel-hint">Pulsa <b>H</b> para cerrar</p>
+    </div>
+
+    <!-- Panel de imperio (tecla TAB) — v0.9 -->
+    <div id="empire" class="game-panel hidden">
+      <h3>🏛️ IMPERIO</h3>
+      <div id="empire-body"></div>
+      <p class="panel-hint">Pulsa <b>TAB</b> para cerrar</p>
     </div>
 
     <!-- Torneo (salas) -->

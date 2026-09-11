@@ -75,10 +75,11 @@ los 10 segundos.
       en mitad del espacio.
 
 ### Fase D — Niebla de guerra
-- [ ] Radio de visión por nave (ej. 600 px) y por planeta propio (ej. 1000 px).
-- [ ] Fuera de la visión: ni naves ni planetas enemigos se dibujan (en zoom out,
-      el mapa solo muestra lo explorado + territorio propio).
-- [ ] Guardar en el save qué zonas están exploradas (persistente).
+- [x] Radio de visión por nave (600) y por planeta propio (1000). *(v0.9)*
+- [x] Fuera de la visión: ni naves ni planetas enemigos se dibujan; en zoom out el
+      mapa solo muestra lo explorado + territorio propio; lo explorado sin visión
+      se ve atenuado con el último dueño conocido (`knownOwner`). *(v0.9)*
+- [x] Explorado persistente en el save (rejilla de 1600 celdas). *(v0.9)*
 
 ### Fase E — Combate y economía estratégica
 - [x] Las naves cuestan créditos y tardan en construirse (cola de construcción en la
@@ -98,11 +99,13 @@ los 10 segundos.
       solo atacan en guerra o si tú provocas primero; la paz es segura)*
 
 ### Fase F — UI estratégica
-- [ ] Panel de imperio (tecla TAB): lista de planetas propios, producción, naves,
-      cola de construcción.
+- [x] Panel de imperio (tecla TAB o icono 🏛️): resumen (planetas, ◈/s, flota,
+      hangar, cola), planetas propios con escudo/producción, flota con roles y
+      estado diplomático de la galaxia (guerras y alianzas entre facciones IA).
+      *(v0.9)*
 - [ ] ~~Órdenes con clic derecho: enviar nave seleccionada a planeta/coordenada.~~
       → **absorbido por la Fase G (v0.7)**, que lo amplía a selección de grupo + menú.
-- [ ] Minimapa: solo visión actual + explorado.
+- [x] Minimapa: solo visión actual + explorado. *(v0.9)*
 
 ### Fase G — Control RTS de flota (v0.7, implementada 2026-09-11)
 Control estilo Age of Empires de las naves desplegadas. Diseño completo en el vault:
@@ -128,6 +131,16 @@ Control estilo Age of Empires de las naves desplegadas. Diseño completo en el v
       adelante — p. ej. nuevos pasos del tutorial guiado enseñando SHIFT+arrastre
       y el menú de botón derecho).
 - Subsume el ítem «órdenes con clic derecho» de la Fase F.
+
+### Fase D+F — Niebla de guerra y panel de imperio (v0.9, implementada 2026-09-11)
+- [x] **Niebla de guerra**: rejilla de 200 u (1600 celdas). Ves 600 u desde tus
+      naves y 1000 u desde tus planetas; lo explorado queda para siempre
+      (atenuado, con último dueño conocido). Naves enemigas, jugadores remotos,
+      proyectiles y partículas fuera de visión no se dibujan. Minimapa con niebla.
+      Clasificación solo con lo que conoces de cada imperio. Explorado en el save.
+- [x] **Panel de imperio (TAB / 🏛️)**: resumen, planetas propios (escudo y
+      producción), flota con roles y guerras/alianzas entre facciones IA.
+- E2E: **101 checks verdes**.
 
 ### Fase H — Facciones imperio: IA real (v0.8, implementada 2026-09-11)
 Pedido de Pedro: «cada facción empieza de cero con una sola nave; la IA debe

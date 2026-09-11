@@ -447,6 +447,64 @@ let playerCapital = null;      // planeta capital del jugador
 const prepBanner = document.getElementById('prep-banner');
 
 /* =========================================================
+   v0.9 — NIEBLA DE GUERRA
+   Rejilla de 200 u sobre el mundo. Ves lo que está a 600 u
+   de tus naves o a 1000 u de tus planetas; lo visto queda
+   EXPLORADO para siempre (atenuado, con el último dueño
+   conocido). Lo nunca visto no se dibuja. Persiste en el save.
+   ========================================================= */
+const FOG_CELL = 200;
+const FOG_W = Math.ceil(WORLD.w / FOG_CELL), FOG_H = Math.ceil(WORLD.h / FOG_CELL);
+const explored = new Uint8Array(FOG_W * FOG_H);    // visto alguna vez (persistente)
+const visibleNow = new Uint8Array(FOG_W * FOG_H);  // bajo visión AHORA
+const VISION_SHIP = 600, VISION_PLANET = 1000;
+let fogT = 0;
+const fogCanvas = document.createElement('canvas');
+fogCanvas.width = FOG_W; fogCanvas.height = FOG_H;
+const fogCtx = fogCanvas.getContext('2d');
+const fogImg = fogCtx.createImageData(FOG_W, FOG_H);
+
+function fogCell(x, y) {
+  const cx = Math.max(0, Math.min(FOG_W - 1, Math.floor(x / FOG_CELL)));
+  const cy = Math.max(0, Math.min(FOG_H - 1, Math.floor(y / FOG_CELL)));
+  return cy * FOG_W + cx;
+}
+function fogVisible(x, y)  { return !!visibleNow[fogCell(x, y)]; }
+function fogExplored(x, y) { return !!explored[fogCell(x, y)]; }
+function fogMark(x, y, r) {
+  const x0 = Math.max(0, Math.floor((x - r) / FOG_CELL)), x1 = Math.min(FOG_W - 1, Math.floor((x + r) / FOG_CELL));
+  const y0 = Math.max(0, Math.floor((y - r) / FOG_CELL)), y1 = Math.min(FOG_H - 1, Math.floor((y + r) / FOG_CELL));
+  for (let cy = y0; cy <= y1; cy++) for (let cx = x0; cx <= x1; cx++) {
+    const ddx = (cx + 0.5) * FOG_CELL - x, ddy = (cy + 0.5) * FOG_CELL - y;
+    if (ddx * ddx + ddy * ddy <= r * r) { const i = cy * FOG_W + cx; visibleNow[i] = 1; explored[i] = 1; }
+  }
+}
+function fogUpdate(dt) {
+  fogT -= dt;
+  if (fogT > 0) return;
+  fogT = 0.25;   // 4 Hz sobra
+  visibleNow.fill(0);
+  if (player.alive) fogMark(player.x, player.y, VISION_SHIP);
+  for (const b of bots) if (b.built && b.alive) fogMark(b.x, b.y, VISION_SHIP);
+  for (const p of planets) if (p.owner === player.color) fogMark(p.x, p.y, VISION_PLANET);
+  // último dueño conocido de los planetas bajo visión (para el mapa atenuado)
+  for (const p of planets) if (fogVisible(p.x, p.y)) p.knownOwner = p.owner;
+  // repintar la textura de niebla: opaco = inexplorado, velo = explorado sin visión
+  const d = fogImg.data;
+  for (let i = 0; i < explored.length; i++) {
+    const a = visibleNow[i] ? 0 : (explored[i] ? 110 : 235);
+    d[i * 4] = 3; d[i * 4 + 1] = 5; d[i * 4 + 2] = 12; d[i * 4 + 3] = a;
+  }
+  fogCtx.putImageData(fogImg, 0, 0);
+}
+function fogDraw() {   // se dibuja lo ÚLTIMO en coordenadas de mundo (tras asteroides)
+  ctx.save();
+  ctx.imageSmoothingEnabled = true;
+  ctx.drawImage(fogCanvas, 0, 0, WORLD.w, WORLD.h);
+  ctx.restore();
+}
+
+/* =========================================================
    LÓGICA DE ACTUALIZACIÓN
    ========================================================= */
 const CAPTURE_RANGE_EXTRA = 24;
@@ -741,6 +799,7 @@ function update(dt) {
   player.credits += income * dt;
 
   /* --- cámara y red --- */
+  fogUpdate(dt);   // v0.9: niebla de guerra
   cam.x += (player.x - cam.x) * (1 - Math.pow(0.001, dt));
   cam.y += (player.y - cam.y) * (1 - Math.pow(0.001, dt));
   cam.zoom += (cam.zoomTarget - cam.zoom) * (1 - Math.pow(0.0001, dt)); // zoom suavizado
@@ -819,18 +878,23 @@ function draw() {
     ctx.stroke();
   }
 
-  // planetas
+  // planetas (v0.9: niebla — solo lo explorado; atenuado y con el último
+  // dueño conocido si ahora mismo no está bajo tu visión)
   for (const p of planets) {
     if (p.x < vL - p.r * 2 || p.x > vR + p.r * 2 || p.y < vT - p.r * 2 || p.y > vB + p.r * 2) continue;
+    const pVis = fogVisible(p.x, p.y);
+    if (!pVis && !fogExplored(p.x, p.y)) continue;
+    const shownOwner = pVis ? p.owner : (p.knownOwner || null);
+    ctx.globalAlpha = pVis ? 1 : 0.4;
     if (strat) {
       // mapa de estrategia: círculo con color de facción, sin detalle pixel
-      ctx.fillStyle = p.owner || '#44557a';
+      ctx.fillStyle = shownOwner || '#44557a';
       ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, TAU); ctx.fill();
-      if (p.shield > 0) {
+      if (pVis && p.shield > 0) {
         ctx.strokeStyle = 'rgba(255,255,255,0.8)'; ctx.lineWidth = 2 / z;
         ctx.beginPath(); ctx.arc(p.x, p.y, p.r + 10 / z, -Math.PI / 2, -Math.PI / 2 + (p.shield / p.shieldMax) * TAU); ctx.stroke();
       }
-      if (p.capture > 0 && p.capturer) {
+      if (pVis && p.capture > 0 && p.capturer) {
         ctx.strokeStyle = p.capturer; ctx.lineWidth = 2 / z;
         ctx.beginPath(); ctx.arc(p.x, p.y, p.r + 20 / z, -Math.PI / 2, -Math.PI / 2 + p.capture * TAU); ctx.stroke();
       }
@@ -838,20 +902,21 @@ function draw() {
         ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2 / z;
         ctx.beginPath(); ctx.arc(p.x, p.y, p.r + 34 / z, 0, TAU); ctx.stroke();
       }
+      ctx.globalAlpha = 1;
       continue;
     }
     // render pixel-art (zoom cercano)
-    if (p.owner) {
-      ctx.strokeStyle = p.owner; ctx.lineWidth = 2;
+    if (shownOwner) {
+      ctx.strokeStyle = shownOwner; ctx.lineWidth = 2;
       ctx.beginPath(); ctx.arc(p.x, p.y, p.r + 4, 0, TAU); ctx.stroke();
-      // v0.4: arco de escudo proporcional a los puntos restantes
-      if (p.shield > 0) {
+      // v0.4: arco de escudo proporcional a los puntos restantes (solo bajo visión)
+      if (pVis && p.shield > 0) {
         ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1;
         ctx.beginPath(); ctx.arc(p.x, p.y, p.r + 8, -Math.PI / 2, -Math.PI / 2 + (p.shield / p.shieldMax) * TAU); ctx.stroke();
       }
     }
-    // progreso de captura
-    if (p.capture > 0 && p.capturer) {
+    // progreso de captura (solo bajo visión)
+    if (pVis && p.capture > 0 && p.capturer) {
       ctx.strokeStyle = p.capturer; ctx.lineWidth = 2;
       ctx.beginPath(); ctx.arc(p.x, p.y, p.r + 7, -Math.PI / 2, -Math.PI / 2 + p.capture * TAU); ctx.stroke();
     }
@@ -860,15 +925,17 @@ function draw() {
     ctx.drawImage(p.sprite, p.x - p.r, p.y - p.r);
     if (z >= 0.8 && dist2(p.x, p.y, player.x, player.y) < 700 * 700) {
       ctx.font = (6 / z) + 'px monospace'; ctx.textAlign = 'center';
-      ctx.fillStyle = p.owner || '#8fa8d0';
-      ctx.fillText(p.name + (p.owner ? ' ●' : '') + (p.capital ? ' ★' : ''), p.x, p.y - p.r - 4 / z);
+      ctx.fillStyle = shownOwner || '#8fa8d0';
+      ctx.fillText(p.name + (shownOwner ? ' ●' : '') + (p.capital ? ' ★' : '') + (pVis ? '' : ' ?'), p.x, p.y - p.r - 4 / z);
     }
+    ctx.globalAlpha = 1;
   }
 
-  // bots
+  // bots (v0.9: las naves de otras facciones solo se ven bajo tu visión)
   for (const b of bots) {
     if (!b.alive) continue;
     if (b.x < vL - 60 || b.x > vR + 60 || b.y < vT - 60 || b.y > vB + 60) continue;
+    if (!b.built && !fogVisible(b.x, b.y)) continue;   // enemigos en niebla: invisibles
     if (strat) {
       ctx.fillStyle = b.color;
       ctx.fillRect(b.x - 1.5 / z, b.y - 1.5 / z, 3 / z, 3 / z);
@@ -878,9 +945,10 @@ function draw() {
     }
   }
 
-  // jugadores remotos (multijugador real)
+  // jugadores remotos (multijugador real) — también ocultos por la niebla
   for (const r of net.remotes.values()) {
     if (r.x < vL - 60 || r.x > vR + 60 || r.y < vT - 60 || r.y > vB + 60) continue;
+    if (!fogVisible(r.x, r.y)) continue;
     if (strat) {
       ctx.fillStyle = r.color;
       ctx.fillRect(r.x - 1.5 / z, r.y - 1.5 / z, 3 / z, 3 / z);
@@ -897,6 +965,7 @@ function draw() {
   if (!strat) {
     for (const pr of projectiles) {
       if (pr.x < vL - 4 || pr.x > vR + 4 || pr.y < vT - 4 || pr.y > vB + 4) continue;
+      if (pr.color !== player.color && !fogVisible(pr.x, pr.y)) continue;   // v0.9
       ctx.fillStyle = pr.color;
       ctx.fillRect(pr.x - 1, pr.y - 1, 3, 3);
       ctx.fillStyle = '#fff';
@@ -904,6 +973,7 @@ function draw() {
     }
     for (const pa of particles) {
       if (pa.x < vL - 4 || pa.x > vR + 4 || pa.y < vT - 4 || pa.y > vB + 4) continue;
+      if (!fogVisible(pa.x, pa.y)) continue;   // v0.9
       ctx.globalAlpha = Math.max(0, pa.life);
       ctx.fillStyle = pa.color;
       ctx.fillRect(pa.x, pa.y, 2, 2);
@@ -995,13 +1065,19 @@ function drawMinimap() {
   mctx.fillStyle = '#05060e';
   mctx.fillRect(0, 0, 150, 150);
   const k = 150 / WORLD.w;
+  // v0.9: el minimapa obedece a la niebla — solo lo explorado y lo visible
+  mctx.fillStyle = 'rgba(68,85,122,0.25)';
+  for (let cy = 0; cy < FOG_H; cy++) for (let cx = 0; cx < FOG_W; cx++)
+    if (!explored[cy * FOG_W + cx]) mctx.fillRect(cx * FOG_CELL * k, cy * FOG_CELL * k, FOG_CELL * k + 1, FOG_CELL * k + 1);
   for (const p of planets) {
-    mctx.fillStyle = p.owner || '#44557a';
+    if (!fogExplored(p.x, p.y)) continue;
+    mctx.fillStyle = (fogVisible(p.x, p.y) ? p.owner : p.knownOwner) || '#44557a';
     mctx.fillRect(p.x * k, p.y * k, 2, 2);
   }
   mctx.fillStyle = '#8fa8d0';
-  for (const b of bots) if (b.alive) mctx.fillRect(b.x * k, b.y * k, 1, 1);
+  for (const b of bots) if (b.alive && (b.built || fogVisible(b.x, b.y))) mctx.fillRect(b.x * k, b.y * k, 1, 1);
   for (const r of net.remotes.values()) {
+    if (!fogVisible(r.x, r.y)) continue;
     mctx.fillStyle = r.color;
     mctx.fillRect(r.x * k, r.y * k, 1, 1);
   }
@@ -1014,12 +1090,15 @@ function drawMinimap() {
    ========================================================= */
 function updateBoard() {
   // v0.8: clasificación por FACCIONES — planetas, naves y créditos del imperio
+  // v0.9: con niebla — de las demás facciones solo cuentan planetas que CONOCES
+  // (último dueño visto) y naves actualmente avistadas
   const rows = [];
   for (const c of FACTION_COLORS) {
     const mine = c === player.color;
-    const pl = planets.filter(p => p.owner === c).length;
+    const pl = mine ? planets.filter(p => p.owner === c).length
+                    : planets.filter(p => (fogVisible(p.x, p.y) ? p.owner : p.knownOwner) === c).length;
     const sh = mine ? bots.filter(b => b.built && b.alive).length + (player.alive ? 1 : 0)
-                    : bots.filter(b => b.imp && b.alive && b.color === c).length;
+                    : bots.filter(b => b.imp && b.alive && b.color === c && fogVisible(b.x, b.y)).length;
     const cr = mine ? Math.floor(player.credits) : Math.floor((facState[c] && facState[c].credits) || 0);
     rows.push({ name: mine ? player.name + ' (tú)' : facName(c), pl, sh, credits: cr, me: mine, color: c });
   }
@@ -1028,7 +1107,7 @@ function updateBoard() {
   rows.sort((a, b) => b.pl - a.pl || b.credits - a.credits);
   const list = document.getElementById('board-list');
   list.innerHTML = rows.slice(0, 8).map(r =>
-    `<li class="${r.me ? 'me' : ''}"><span style="color:${r.color}">${r.name}</span><span class="c">🪐${r.pl} 🛰${r.sh} ◈${r.credits}</span></li>`
+    `<li class="${r.me ? 'me' : ''}"><span style="color:${r.color}">${r.name}</span><span class="c">🪐${r.pl} 🛰${r.sh}${r.me ? ' ◈' + r.credits : ''}</span></li>`
   ).join('');
 }
 
@@ -1201,6 +1280,9 @@ function newGameInit() {
   // v0.8: cada facción IA empieza DE CERO — capital propia (lejos de la tuya) y 1 nave.
   // Su IA conquista, mina y construye; tu flota se construye en tu capital.
   initFactions();
+  // v0.9: niebla nueva para la partida nueva
+  explored.fill(0); visibleNow.fill(0); fogT = 0;
+  for (const p of planets) p.knownOwner = null;
   // v0.6: partida nueva — 1 caza (tu nave), hangar vacío, fondos iniciales
   player.ship = 'caza';
   hangarShips.length = 0;
@@ -1355,7 +1437,8 @@ function saveGame() {
       capitalIdx: planets.indexOf(playerCapital),
       prepT: Math.max(0, prepT),
       // solo planetas con dueño (los neutros son el estado inicial determinista)
-      planets: planets.map((p, i) => p.owner ? { i, owner: p.owner, shield: p.shield, cap: p.capital ? 1 : 0 } : null).filter(Boolean),
+      planets: planets.map((p, i) => p.owner ? { i, owner: p.owner, shield: p.shield, cap: p.capital ? 1 : 0, known: p.knownOwner || null } : null).filter(Boolean),
+      fog: Array.from(explored).join(''),   // v0.9: mapa explorado (1600 celdas 0/1)
       bots: bots.map(b => ({
         name: b.name, color: b.color, x: b.x, y: b.y,
         hp: b.hp, credits: Math.floor(b.credits), kills: b.kills || 0,
@@ -1413,12 +1496,17 @@ function applySave(d) {
     const p = planets[sp.i];
     if (!p) continue;
     p.owner = sp.owner; p.shield = sp.shield;
+    p.knownOwner = sp.known ?? null;   // v0.9: último dueño conocido
     // v0.8: restaurar capitales de facción (escudo grande + nombre + enlace en facState)
     if (sp.cap && sp.owner !== player.color) {
       p.capital = true; p.shieldMax = 100; p.name = 'CAPITAL ' + facName(sp.owner);
       if (facState[sp.owner]) facState[sp.owner].capital = p;
     }
   }
+  // v0.9: mapa explorado
+  explored.fill(0); visibleNow.fill(0); fogT = 0;
+  if (d.fog && d.fog.length === explored.length)
+    for (let i = 0; i < explored.length; i++) explored[i] = d.fog[i] === '1' ? 1 : 0;
   // v0.8: capital de respaldo y datos guardados de cada facción
   for (const c of FACTION_COLORS) {
     if (c === player.color || !facState[c]) continue;
@@ -1491,6 +1579,8 @@ addEventListener('beforeunload', saveGame);
 /* ---------- paneles in-game ---------- */
 const shopEl = document.getElementById('shop');
 const diploEl = document.getElementById('diplo');
+const empireEl = document.getElementById('empire');        // v0.9 (panel de imperio, TAB)
+const empireBody = document.getElementById('empire-body');
 let saveAcc = 0;
 function renderShop() {
   document.getElementById('shop-credits').textContent = Math.floor(player.credits);
@@ -1534,9 +1624,9 @@ function renderDiplo() {
 addEventListener('keydown', e => {
   if (document.activeElement === chatInput) return;
   const k = e.key.toLowerCase();
-  if (k === 'b') { shopEl.classList.toggle('hidden'); diploEl.classList.add('hidden'); renderShop(); }
-  if (k === 'f') { diploEl.classList.toggle('hidden'); shopEl.classList.add('hidden'); renderDiplo(); }
-  if (k === 'escape') { shopEl.classList.add('hidden'); diploEl.classList.add('hidden'); }
+  if (k === 'b') { toggleGamePanel('shop'); }
+  if (k === 'f') { toggleGamePanel('diplo'); }
+  if (k === 'escape') closeAllPanels();
 });
 
 /* ---------- enganche al motor (wrappers) ---------- */
@@ -1565,6 +1655,9 @@ update = function (dt) {
 };
 const _draw = draw;
 draw = function () { _draw(); asteroidsDraw(); };
+// v0.9: la niebla se pinta lo último en coords de mundo (tapa lo no explorado)
+const _draw9 = draw;
+draw = function () { _draw9(); fogDraw(); };
 const _mm = drawMinimap;
 drawMinimap = function () {
   _mm();
@@ -1767,9 +1860,10 @@ function refreshHangar() {
 addEventListener('keydown', e => {
   if (document.activeElement === chatInput) return;
   const k = e.key.toLowerCase();
-  if (k === 'c') { contractsEl.classList.toggle('hidden'); hangarEl.classList.add('hidden'); renderContracts(); }
-  if (k === 'h') { hangarEl.classList.toggle('hidden'); contractsEl.classList.add('hidden'); renderHangar(); }
-  if (k === 'escape') { contractsEl.classList.add('hidden'); hangarEl.classList.add('hidden'); }
+  if (k === 'c') { toggleGamePanel('contracts'); }
+  if (k === 'h') { toggleGamePanel('hangar'); }
+  if (k === 'tab') { e.preventDefault(); toggleGamePanel('empire'); }   // v0.9
+  if (k === 'escape') closeAllPanels();
 });
 
 /* ---------- sala privada: leer código en el menú ---------- */
@@ -2247,13 +2341,17 @@ update = function (dt) { _update52(dt); tutorialUpdate(dt); };
    tooltip). Los atajos de teclado siguen funcionando.
    ========================================================= */
 function toggleGamePanel(which) {
-  const map = { shop: shopEl, diplo: diploEl, contracts: contractsEl, hangar: hangarEl };
+  const map = { shop: shopEl, diplo: diploEl, contracts: contractsEl, hangar: hangarEl, empire: empireEl };
   for (const k in map) if (k !== which) map[k].classList.add('hidden');
   map[which].classList.toggle('hidden');
   if (which === 'shop') renderShop();
   else if (which === 'diplo') renderDiplo();
   else if (which === 'contracts') renderContracts();
   else if (which === 'hangar') renderHangar();
+  else if (which === 'empire') renderEmpire();
+}
+function closeAllPanels() {
+  for (const el of [shopEl, diploEl, contractsEl, hangarEl, empireEl]) el.classList.add('hidden');
 }
 const tbButtons = Array.from(document.querySelectorAll('#toolbar button[data-panel]'));
 tbButtons.forEach(b => { b.onclick = () => toggleGamePanel(b.dataset.panel); });
@@ -2261,7 +2359,7 @@ const tbChat = document.getElementById('tb-chat');
 if (tbChat) tbChat.onclick = () => { chatInput.style.display = 'block'; chatInput.focus(); };
 const tbMenu = document.getElementById('tb-menu');
 if (tbMenu) tbMenu.onclick = () => { if (inGame) backToMenu(); };
-const tbPairs = tbButtons.map(b => [b, { shop: shopEl, diplo: diploEl, contracts: contractsEl, hangar: hangarEl }[b.dataset.panel]]);
+const tbPairs = tbButtons.map(b => [b, { shop: shopEl, diplo: diploEl, contracts: contractsEl, hangar: hangarEl, empire: empireEl }[b.dataset.panel]]);
 
 // resaltar el icono del panel que esté abierto (también si se abre con teclado)
 const _update53 = update;
@@ -2293,5 +2391,59 @@ $('btn-wipe').onclick = () => {
     localStorage.removeItem('pixelfleet_save_v2');
     localStorage.removeItem('pixelfleet_save_v1');   // limpieza del formato viejo
     location.reload();
+  }
+};
+
+/* =========================================================
+   v0.9 — PANEL DE IMPERIO (TAB)
+   Resumen del imperio, planetas propios, flota y estado
+   diplomático de la galaxia (guerras/alianzas entre facciones).
+   Sin botones: se re-renderiza entero a 2 Hz mientras esté abierto.
+   (empireEl/empireBody se declaran junto a shopEl/diploEl)
+   ========================================================= */
+function renderEmpire() {
+  const own = planets.filter(p => p.owner === player.color);
+  const inc = own.reduce((s, p) => s + (p === playerCapital ? PLANET_INCOME * 3 : PLANET_INCOME), 0);
+  const fleet = bots.filter(b => b.built && b.alive);
+  let html = '<p class="panel-sub">🪐 ' + own.length + ' planeta(s) · +' + inc + '◈/s · 🛰 ' +
+    fleet.length + '/' + fleetMax() + ' · hangar ' + hangarShips.length +
+    (buildQueue.length ? ' · 🏗️ ' + Math.ceil(buildQueue[0].t) + ' s' : '') + '</p>';
+  html += '<h4 class="panel-sub2">PLANETAS PROPIOS</h4>';
+  html += own.length
+    ? own.map(p => '<div class="diplo-row"><span style="color:' + player.color + '">' +
+        (p === playerCapital ? '★ ' : '') + p.name + '</span><span>🛡 ' + p.shield + '/' + p.shieldMax +
+        ' · +' + (p === playerCapital ? PLANET_INCOME * 3 : PLANET_INCOME) + '◈/s</span></div>').join('')
+    : '<div class="diplo-row"><span>sin planetas</span></div>';
+  html += '<h4 class="panel-sub2">FLOTA</h4>';
+  html += fleet.length
+    ? fleet.map(b => '<div class="diplo-row"><span>🛰 ' + b.name + '</span><span>' + roleLabel(b) + '</span></div>').join('')
+    : '<div class="diplo-row"><span>sin naves desplegadas (hangar: H)</span></div>';
+  html += '<h4 class="panel-sub2">LA GALAXIA (relación contigo)</h4>';
+  for (const c of FACTION_COLORS) {
+    if (c === player.color) continue;
+    const [label, col] = relationLabel(standings[c] || 0);
+    html += '<div class="diplo-row"><span style="color:' + c + '">' + facName(c) + '</span>' +
+            '<span style="color:' + col + '">' + label + '</span></div>';
+  }
+  const relRows = [];
+  for (let i = 0; i < FACTION_COLORS.length; i++) for (let j = i + 1; j < FACTION_COLORS.length; j++) {
+    const a = FACTION_COLORS[i], b = FACTION_COLORS[j];
+    if (a === player.color || b === player.color) continue;
+    const r = (facState[a] && facState[a].rel[b]) || 0;
+    if (r <= -30)      relRows.push('⚔️ GUERRA: <span style="color:' + a + '">' + facName(a) + '</span> vs <span style="color:' + b + '">' + facName(b) + '</span>');
+    else if (r >= 50)  relRows.push('🤝 alianza: <span style="color:' + a + '">' + facName(a) + '</span> + <span style="color:' + b + '">' + facName(b) + '</span>');
+  }
+  html += '<h4 class="panel-sub2">GUERRAS Y ALIANZAS ENTRE FACCIONES IA</h4>';
+  html += relRows.length ? relRows.map(r => '<div class="diplo-row">' + r + '</div>').join('')
+                         : '<div class="diplo-row"><span>galaxia en paz… de momento</span></div>';
+  empireBody.innerHTML = html;
+}
+let empireT = 0;
+const _update9 = update;
+update = function (dt) {
+  _update9(dt);
+  if (!empireEl.classList.contains('hidden')) {
+    empireT -= dt;
+    if (empireT <= 0) { empireT = 0.5; renderEmpire(); }   // vivo, sin romper clics (no hay botones)
   }
 };
