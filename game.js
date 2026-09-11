@@ -47,6 +47,9 @@ function mulberry32(seed) {
 
 /* ---------- configuración del jugador ---------- */
 const FACTION_COLORS = ['#7ef9ff', '#ffd166', '#ff6b8a', '#8aff80', '#c792ff', '#ff9f5a'];
+// v0.8: cada facción es un imperio con nombre (para chat y clasificación)
+const FACTION_NAMES = { '#7ef9ff': 'Aqua', '#ffd166': 'Áurea', '#ff6b8a': 'Carmesí', '#8aff80': 'Verdi', '#c792ff': 'Violeta', '#ff9f5a': 'Ámbar' };
+function facName(c) { return c === player.color ? player.name : (FACTION_NAMES[c] || c); }
 const player = {
   name: 'PilotoAnónimo',
   color: FACTION_COLORS[0],
@@ -137,13 +140,8 @@ for (let i = 0; i < 48; i++) {
     shieldMax: 25,
   });
 }
-// algunos planetas pre-conquistados por facciones para dar vida a la galaxia
-// (también deterministas: mismas pre-conquistas en cada partida nueva)
-for (let i = 0; i < 10; i++) {
-  const p = planets[rndiW(0, planets.length - 1)];
-  p.owner = FACTION_COLORS[rndiW(1, FACTION_COLORS.length - 1)];
-  p.shield = p.shieldMax;   // planetas conquistados nacen con escudo
-}
+// v0.8: galaxia virgen — NO hay planetas pre-conquistados. Cada facción
+// empieza de cero (capital + 1 nave) en initFactions() y se expande con su IA.
 
 // estrellas (3 capas de parallax)
 const starLayers = [];
@@ -154,46 +152,239 @@ for (let L = 0; L < 3; L++) {
   starLayers.push({ stars, par: 0.25 + L * 0.3 });
 }
 
-/* ---------- bots (pilotos simulados) ---------- */
+/* ---------- v0.8: facciones imperio (bots con IA de facción) ---------- */
 const BOT_NAMES = ['Xx_Nova_xX', 'Zorg', 'PixelLord', 'Andromeda', 'Vega', 'CapitánFalkor',
   'Nebulosa', 'R2-Juan', 'Estelar', 'Troya', 'Quasar', 'Lyra', 'Orion', 'NovaPrime',
   'Astra', 'Cometa', 'Pulsar', 'Halley', 'Sagan', 'Kepler', 'Hubble', 'Cosmos',
   'Warp9', 'Eclipse', 'Foton', 'Gravedad', 'Zenith', 'Atlas', 'Rigel', 'Sirio'];
 const bots = [];
-function spawnBot(anywhere) {
-  // v0.6: ningún bot aleatorio es del color del jugador — toda nave de tu
-  // color en pantalla eres tú, un wingman tuyo u otro jugador real
-  const pool = FACTION_COLORS.filter(c => c !== player.color);
-  const color = pool[rndi(0, pool.length - 1)];
+// estado por facción IA: capital, hucha común, relaciones con las demás, cola de construcción
+const facState = {};   // color -> { capital, credits, rel:{color->num}, warT:{}, aiT, buildT, building }
+const FAC_SHIP_COST = 60, FAC_SHIP_TIME = 20;
+const playerAggro = {};   // color -> s restantes de "provocada por el jugador" (wingmen pueden responder)
+
+function setRel(a, b, v) {
+  if (facState[a]) facState[a].rel[b] = v;
+  if (facState[b]) facState[b].rel[a] = v;
+}
+function atWarFF(a, b) {   // guerra entre dos colores cualesquiera (fac-fac o fac-jugador)
+  if (a === b || !a || !b) return false;
+  if (a === player.color) return (standings[b] || 0) <= -30;
+  if (b === player.color) return (standings[a] || 0) <= -30;
+  return !!(facState[a] && (facState[a].rel[b] || 0) <= -30);
+}
+function facPower(c) {
+  if (c === player.color)
+    return planets.filter(p => p.owner === c).length * 2 + bots.filter(b => b.built && b.alive).length + 2;
+  const pl = planets.filter(p => p.owner === c).length;
+  const sh = bots.filter(b => b.imp && b.alive && b.color === c).length;
+  return pl * 2 + sh;
+}
+function spawnFactionShip(color) {
+  const fac = facState[color];
+  const home = (fac && fac.capital) || planets.find(p => p.owner === color) || planets[rndi(0, planets.length - 1)];
   const b = {
-    name: BOT_NAMES[rndi(0, BOT_NAMES.length - 1)] + '_' + rndi(10, 99),
+    name: FACTION_NAMES[color] + '-' + rndi(10, 99),
     color,
-    x: rnd(0, WORLD.w),
-    y: rnd(0, WORLD.h),
-    angle: rnd(0, TAU), speed: rnd(18, 42),   // v0.5.2: bots más lentos
+    x: clamp(home.x + rnd(-200, 200), 20, WORLD.w - 20),
+    y: clamp(home.y + rnd(-200, 200), 20, WORLD.h - 20),
+    angle: rnd(0, TAU), speed: rnd(18, 42),
     waypoint: null, hp: 3, alive: true, respawnT: 0,
-    shootCd: rnd(0.5, 2), credits: rndi(30, 70), kills: 0,   // v0.5.3: todos empiezan igual
+    shootCd: rnd(0.5, 2), credits: 0, kills: 0,
     vx: 0, vy: 0, flash: 0,
-    home: null, expandR: 1500,   // v0.5: cada bot expande desde su capital
+    home, expandR: 1500,
+    imp: true, task: null, retalT: 0, lastHitBy: null,   // v0.8: nave imperial
   };
-  b.x = clamp(b.x, 20, WORLD.w - 20);
-  b.y = clamp(b.y, 20, WORLD.h - 20);
   bots.push(b);
   return b;
 }
-// v0.6: los bots se generan al empezar PARTIDA NUEVA (con el color del jugador
-// ya elegido). Al continuar partida, vienen del save.
-function initBots() {
+// v0.8: cada facción empieza DE CERO — capital propia lejos de las demás y 1 nave
+function initFactions() {
   bots.length = 0;
-  for (let i = 0; i < 240; i++) spawnBot(true);
-  // v0.5: asignar a cada bot una "capital" y empezar cerca de ella (no junto al jugador)
-  for (const b of bots) {
-    const owned = planets.filter(p => p.owner === b.color);
-    b.home = owned.length ? owned[rndi(0, owned.length - 1)]
-                          : planets[rndi(0, planets.length - 1)];
-    b.x = clamp(b.home.x + rnd(-700, 700), 20, WORLD.w - 20);
-    b.y = clamp(b.home.y + rnd(-700, 700), 20, WORLD.h - 20);
+  for (const c of FACTION_COLORS) delete facState[c];
+  for (const k in playerAggro) delete playerAggro[k];
+  for (const c of FACTION_COLORS) {
+    if (c === player.color) continue;
+    let cap = null, bestD = -1;
+    for (let i = 0; i < 60; i++) {
+      const p = planets[rndi(0, planets.length - 1)];
+      if (p.owner) continue;
+      let dmin = Infinity;
+      for (const q of planets) if (q.owner) dmin = Math.min(dmin, dist2(p.x, p.y, q.x, q.y));
+      if (dmin > bestD) { bestD = dmin; cap = p; }
+      if (bestD > 2600 * 2600) break;
+    }
+    if (!cap) cap = planets.find(p => !p.owner);
+    if (!cap) continue;
+    cap.owner = c; cap.capital = true; cap.shieldMax = 100; cap.shield = 100;
+    cap.name = 'CAPITAL ' + facName(c);
+    facState[c] = { capital: cap, credits: 20, rel: {}, warT: {}, aiT: rnd(2, 6), buildT: 0, building: false };
+    for (const o of FACTION_COLORS) if (o !== c) facState[c].rel[o] = 0;
+    spawnFactionShip(c);
   }
+}
+
+/* --- IA de facción: tareas de cada nave imperial --- */
+function facTaskValid(b) {
+  const t = b.task;
+  if (!t) return false;
+  if (t.type === 'mine')    return !!(t.a && t.a.alive);
+  if (t.type === 'conquer') return !!(t.p && !t.p.owner);
+  if (t.type === 'attack')  return !!(t.p && t.p.owner && t.p.owner !== b.color && atWarFF(b.color, t.p.owner));
+  if (t.type === 'defend')  return !!(facState[b.color] && facState[b.color].capital);
+  return false;
+}
+function facAssignTask(b) {
+  b.task = null; b.waypoint = null;
+  const fac = facState[b.color];
+  if (!fac) return;
+  // 1) guerra: la mitad de las naves ataca el planeta enemigo más cercano; el resto defiende
+  const enemies = planets.filter(p => p.owner && p.owner !== b.color && atWarFF(b.color, p.owner));
+  if (enemies.length) {
+    const myShips = bots.filter(o => o.imp && o.alive && o.color === b.color);
+    const attackers = myShips.filter(o => o.task && o.task.type === 'attack').length;
+    if (attackers < Math.ceil(myShips.length / 2)) {
+      enemies.sort((p, q) => dist2(b.x, b.y, p.x, p.y) - dist2(b.x, b.y, q.x, q.y));
+      b.task = { type: 'attack', p: enemies[0] };
+    } else b.task = { type: 'defend' };
+    return;
+  }
+  // 2) expansión: conquistar el planeta neutral más cercano (máx. 2 naves por planeta)
+  let cands = planets.filter(p => !p.owner);
+  if (prepT > 0 && playerCapital)   // en preparación, lejos de la capital del jugador
+    cands = cands.filter(p => dist2(p.x, p.y, playerCapital.x, playerCapital.y) >= 2600 * 2600);
+  cands.sort((p, q) => dist2(b.x, b.y, p.x, p.y) - dist2(b.x, b.y, q.x, q.y));
+  for (const p of cands) {
+    const onIt = bots.filter(o => o.imp && o.alive && o.color === b.color && o !== b &&
+                                 o.task && o.task.type === 'conquer' && o.task.p === p).length;
+    if (onIt < 2) { b.task = { type: 'conquer', p }; return; }
+  }
+  // 3) economía: minar el asteroide más cercano
+  let best = null, bd = Infinity;
+  for (const a of asteroids) {
+    if (!a.alive) continue;
+    const d = dist2(b.x, b.y, a.x, a.y);
+    if (d < bd) { bd = d; best = a; }
+  }
+  if (best) { b.task = { type: 'mine', a: best }; return; }
+  b.task = { type: 'defend' };
+}
+// diplomacia estratégica: neutral por defecto; guerra si claramente más fuerte,
+// alianza si estáis igualados, paz si la guerra va mal o se alarga
+function facDiplomacy(c) {
+  const f = facState[c];
+  if (!f) return;
+  const pMe = facPower(c);
+  if (pMe <= 0) return;   // facción eliminada
+  for (const o of FACTION_COLORS) {
+    if (o === c || o === player.color) continue;   // con el jugador manda el panel de diplomacia
+    if (!facState[o] || facPower(o) <= 0) { f.rel[o] = 0; continue; }
+    const rel = f.rel[o] || 0, pOt = facPower(o);
+    if (rel <= -30) {
+      f.warT[o] = (f.warT[o] || 0) + 1;
+      if (pMe < pOt * 0.7 || f.warT[o] >= 4) {
+        setRel(c, o, 0); f.warT[o] = 0;
+        chatSys('🕊️ ' + facName(c) + ' y ' + facName(o) + ' firman la PAZ.');
+      }
+    } else if (rel >= 50) {
+      if (Math.random() < 0.15) { setRel(c, o, 0); chatSys('📡 La alianza entre ' + facName(c) + ' y ' + facName(o) + ' se enfría.'); }
+    } else if (pMe >= pOt * 1.6 && Math.random() < 0.25) {
+      setRel(c, o, -100); f.warT[o] = 0;
+      chatSys('🔥 ¡' + facName(c) + ' declara la GUERRA a ' + facName(o) + '!');
+    } else if (Math.abs(pMe - pOt) <= 2 && Math.random() < 0.15) {
+      setRel(c, o, 50);
+      chatSys('🤝 ' + facName(c) + ' y ' + facName(o) + ' firman una ALIANZA.');
+    }
+  }
+}
+// comportamiento por nave: moverse según tarea y disparar SOLO lo permitido
+function facShipThink(b, dt) {
+  b.flash = Math.max(0, b.flash - dt);
+  b.retalT = Math.max(0, (b.retalT || 0) - dt);
+  b.shootCd -= dt;
+  const fac = facState[b.color];
+  if (!facTaskValid(b)) facAssignTask(b);
+
+  /* --- movimiento --- */
+  let tx = null, ty = null;
+  const t = b.task;
+  if (t && (t.type === 'conquer' || t.type === 'attack') && t.p) {
+    const hold = t.p.r + 10;
+    if (dist2(b.x, b.y, t.p.x, t.p.y) > hold * hold) { tx = t.p.x; ty = t.p.y; b.waypoint = null; }
+    else {
+      if (!b.waypoint || dist2(b.x, b.y, b.waypoint.x, b.waypoint.y) < 400)
+        b.waypoint = { x: clamp(t.p.x + rnd(-hold, hold), 20, WORLD.w - 20),
+                       y: clamp(t.p.y + rnd(-hold, hold), 20, WORLD.h - 20) };
+      tx = b.waypoint.x; ty = b.waypoint.y;
+    }
+  } else if (t && t.type === 'mine' && t.a && t.a.alive) {
+    if (dist2(b.x, b.y, t.a.x, t.a.y) > 260 * 260) { tx = t.a.x; ty = t.a.y; }
+  } else if (t && t.type === 'defend' && fac && fac.capital) {
+    if (!b.waypoint || dist2(b.x, b.y, b.waypoint.x, b.waypoint.y) < 900)
+      b.waypoint = { x: clamp(fac.capital.x + rnd(-700, 700), 20, WORLD.w - 20),
+                     y: clamp(fac.capital.y + rnd(-700, 700), 20, WORLD.h - 20) };
+    tx = b.waypoint.x; ty = b.waypoint.y;
+  }
+  if (tx != null) {
+    const wa = Math.atan2(ty - b.y, tx - b.x);
+    b.angle = angleLerp(b.angle, wa, 1 - Math.pow(0.05, dt));
+    if (dist2(b.x, b.y, tx, ty) > 30 * 30) {
+      b.x = clamp(b.x + Math.cos(b.angle) * b.speed * dt, 20, WORLD.w - 20);
+      b.y = clamp(b.y + Math.sin(b.angle) * b.speed * dt, 20, WORLD.h - 20);
+    }
+  }
+
+  /* --- fuego (durante la preparación nadie pelea, pero sí se mina) --- */
+  if (b.shootCd > 0) return;
+  if (prepT <= 0) {
+    const st = standings[b.color] || 0;
+    const warP = st <= -30, hostP = st <= -10;
+    let tgt = null, td = (warP ? 520 : 340) ** 2;
+    // el jugador y sus wingmen: solo si la facción está hostil/en guerra contigo
+    if (hostP && player.alive && player.invuln <= 0) {
+      const d = dist2(b.x, b.y, player.x, player.y);
+      if (d < td) { td = d; tgt = player; }
+    }
+    if (hostP) for (const o of bots) {
+      if (!o.built || !o.alive) continue;
+      const d = dist2(b.x, b.y, o.x, o.y);
+      if (d < td) { td = d; tgt = o; }
+    }
+    // otras facciones: SOLO en guerra declarada o como represalia (neutralidad por defecto)
+    for (const o of bots) {
+      if (o === b || !o.alive || !o.imp || o.color === b.color) continue;
+      const war = atWarFF(b.color, o.color);
+      const retal = b.retalT > 0 && b.lastHitBy === o.color;
+      if (!war && !retal) continue;
+      const d = dist2(b.x, b.y, o.x, o.y);
+      const r = war ? 480 : 340;
+      if (d < r * r && d < td) { td = d; tgt = o; }
+    }
+    if (tgt) {
+      const a = Math.atan2(tgt.y - b.y, tgt.x - b.x) + rnd(-0.15, 0.15);
+      shoot(b.x + Math.cos(a) * 8, b.y + Math.sin(a) * 8, a, b.color, b);
+      b.shootCd = rnd(0.9, 1.8);
+      return;
+    }
+    // guerra: desgastar el escudo del planeta enemigo objetivo
+    if (t && t.type === 'attack' && t.p && t.p.owner && t.p.owner !== b.color && t.p.shield > 0) {
+      const rr = t.p.r + 300;
+      if (dist2(b.x, b.y, t.p.x, t.p.y) < rr * rr) {
+        const a = Math.atan2(t.p.y - b.y, t.p.x - b.x) + rnd(-0.1, 0.1);
+        shoot(b.x + Math.cos(a) * 8, b.y + Math.sin(a) * 8, a, b.color, b);
+        b.shootCd = rnd(0.7, 1.2);
+        return;
+      }
+    }
+  }
+  // minar: disparar al asteroide objetivo (también durante la preparación)
+  if (t && t.type === 'mine' && t.a && t.a.alive && dist2(b.x, b.y, t.a.x, t.a.y) < 300 * 300) {
+    const a = Math.atan2(t.a.y - b.y, t.a.x - b.x) + rnd(-0.08, 0.08);
+    shoot(b.x + Math.cos(a) * 8, b.y + Math.sin(a) * 8, a, b.color, b);
+    b.shootCd = rnd(0.6, 1.1);
+    return;
+  }
+  b.shootCd = 0.4;
 }
 
 /* ---------- proyectiles y partículas ---------- */
@@ -271,6 +462,16 @@ function damageShip(ship, dmg, killer) {
   if (ship === player && killer && killer.color && killer !== player) {
     changeStanding(killer.color, -6);
   }
+  // v0.8: represalia — una nave imperial recuerda quién le disparó un rato
+  if (ship.imp && killer && killer.color && killer.color !== ship.color) {
+    ship.lastHitBy = killer.color; ship.retalT = 20;
+  }
+  // v0.8: provocación — si TÚ (o tu flota) dañáis a una facción, tus wingmen
+  // pueden atacarla durante un rato; y si te dañan a ti o a tu flota, defensa propia
+  if (ship !== player && ship.color && ship.color !== player.color && (killer === player || (killer && killer.built)))
+    playerAggro[ship.color] = 45;
+  if ((ship === player || ship.built) && killer && killer.color && killer.color !== player.color && killer !== player)
+    playerAggro[killer.color] = Math.max(playerAggro[killer.color] || 0, 30);
   // v0.6: simetría — si TÚ dañas a un bot, su facción se cabrea contigo;
   // si lo daña un wingman tuyo, cuenta como tuyo pero atenuado
   if (ship !== player && ship.color && killer === player) changeStanding(ship.color, -6);
@@ -390,61 +591,34 @@ function update(dt) {
   }
 
   /* --- bots --- */
-  // v0.5.3: economía igualada — cada bot produce como tú (su capital + planetas de su facción)
-  const facPlanets = {};
-  for (const p of planets) if (p.owner) facPlanets[p.owner] = (facPlanets[p.owner] || 0) + 1;
+  // v0.8: tick de facciones imperio — economía, construcción y diplomacia estratégica
+  for (const c in facState) {
+    const f = facState[c];
+    const owned = planets.filter(p => p.owner === c);
+    f.credits += owned.reduce((s, p) => s + (p.capital ? PLANET_INCOME * 3 : PLANET_INCOME), 0) * dt;
+    const ships = bots.filter(b => b.imp && b.alive && b.color === c).length;
+    const cap = 2 + owned.length;
+    if (!f.building && f.credits >= FAC_SHIP_COST && ships < cap && f.capital && f.capital.owner === c) {
+      f.credits -= FAC_SHIP_COST; f.building = true; f.buildT = FAC_SHIP_TIME;
+    }
+    if (f.building) {
+      f.buildT -= dt;
+      if (f.buildT <= 0) { f.building = false; spawnFactionShip(c); }
+    }
+    f.aiT -= dt;
+    if (f.aiT <= 0) {
+      f.aiT = rnd(30, 50);
+      facDiplomacy(c);
+      for (const b of bots) if (b.imp && b.color === c) b.task = null;   // reasignar tareas
+    }
+  }
   for (const b of bots) {
-    // v0.5.1: las naves construidas se pierden de verdad (no reaparecen)
-    if (!b.alive && b.built) { b.gone = true; continue; }
+    // v0.6/v0.8: las naves construidas y las imperiales se pierden de verdad
+    if (!b.alive && (b.built || b.imp)) { b.gone = true; continue; }
     if (!b.alive) { b.respawnT -= dt; if (b.respawnT <= 0) respawnShip(b); continue; }
     // v0.6: los wingmen (tus naves construidas) tienen su propia IA
     if (b.built) { wingmanUpdate(b, dt); continue; }
-    // v0.5: expansión lenta desde su capital
-    b.expandR = Math.min(4000, b.expandR + 1.5 * dt);
-    if (!b.waypoint || dist2(b.x, b.y, b.waypoint.x, b.waypoint.y) < 900) {
-      let wxp, wyp, tries = 0;
-      do {
-        wxp = clamp(b.home.x + rnd(-b.expandR, b.expandR), 20, WORLD.w - 20);
-        wyp = clamp(b.home.y + rnd(-b.expandR, b.expandR), 20, WORLD.h - 20);
-        tries++;
-        // durante la preparación, los bots no entran en el radio de tu capital
-      } while (prepT > 0 && playerCapital && tries < 6 &&
-               dist2(wxp, wyp, playerCapital.x, playerCapital.y) < 2200 * 2200);
-      b.waypoint = { x: wxp, y: wyp };
-    }
-    const wa = Math.atan2(b.waypoint.y - b.y, b.waypoint.x - b.x);
-    b.angle = angleLerp(b.angle, wa, 1 - Math.pow(0.05, dt));
-    b.x = clamp(b.x + Math.cos(b.angle) * b.speed * dt, 20, WORLD.w - 20);
-    b.y = clamp(b.y + Math.sin(b.angle) * b.speed * dt, 20, WORLD.h - 20);
-    b.flash = Math.max(0, b.flash - dt);
-    b.credits += (PLANET_INCOME * 3 + 0.25 * (facPlanets[b.color] || 0)) * dt; // v0.5.3: mismas reglas que el jugador
-
-    // IA de combate: disparar si el jugador (u otro bot) está cerca y a la vista
-    b.shootCd -= dt;
-    if (b.shootCd <= 0) {
-      // diplomacia: solo te atacan si la facción está hostil (guerra = más alcance y agresividad)
-      const st = standings[b.color] || 0;
-      const hostile = st <= -10;
-      const war = st <= -30;
-      let tgt = null, td = (war ? 520 : 340) ** 2;
-      if (hostile && prepT <= 0 && player.alive && player.invuln <= 0) {
-        const d = dist2(b.x, b.y, player.x, player.y);
-        if (d < td) { td = d; tgt = player; }
-      }
-      // v0.5.3: durante la preparación nadie pelea (inicio tranquilo y economía justa)
-      if (!tgt && prepT <= 0 && Math.random() < 0.4) {
-        for (const o of bots) {
-          if (o === b || !o.alive || o.color === b.color) continue;   // v0.5.2: nada de fuego amigo
-          const d = dist2(b.x, b.y, o.x, o.y);
-          if (d < td * 0.5) { td = d; tgt = o; }
-        }
-      }
-      if (tgt) {
-        const ta = Math.atan2(tgt.y - b.y, tgt.x - b.x) + rnd(-0.15, 0.15);
-        shoot(b.x + Math.cos(ta) * 8, b.y + Math.sin(ta) * 8, ta, b.color, b);
-        b.shootCd = war ? rnd(0.7, 1.5) : rnd(1.1, 2.4);
-      } else b.shootCd = war ? 0.25 : 0.4;
-    }
+    facShipThink(b, dt);   // v0.8: IA de facción
   }
 
   // v0.5: sin "reciclaje" de bots — nadie se teletransporta junto al jugador
@@ -479,6 +653,8 @@ function update(dt) {
             explode(a.x, a.y, '#a0aec0');
             if (pr.owner === player) {
               player.credits += 3; player.fuel = Math.min(player.maxFuel, player.fuel + 8);
+            } else if (pr.owner && pr.owner.imp && facState[pr.owner.color]) {
+              facState[pr.owner.color].credits += 3;   // v0.8: la IA mina para su facción
             }
           } else {
             particles.push({ x: a.x, y: a.y, vx: rnd(-40, 40), vy: rnd(-40, 40), life: 0.3, color: '#a0aec0' });
@@ -497,6 +673,8 @@ function update(dt) {
             dead = true; break;
           }
           p.shield--;
+          // v0.8: dañar el escudo de una facción cuenta como provocación tuya
+          if (pr.owner === player || (pr.owner && pr.owner.built)) playerAggro[p.owner] = 45;
           particles.push({ x: pr.x, y: pr.y, vx: rnd(-50, 50), vy: rnd(-50, 50), life: 0.25, color: p.owner });
           dead = true; break;
         }
@@ -548,6 +726,9 @@ function update(dt) {
           } else if (was === player.color) {
             changeStanding(faction, -25);
             chatSys('⚠️ ' + p.name + ' ha caído en manos de la facción ' + faction);
+          } else if (p.capital) {
+            // v0.8: la caída de una capital enemiga es noticia galáctica
+            chatSys('⚠️ La CAPITAL de ' + facName(was) + ' ha caído en manos de ' + facName(faction) + '.');
           }
         }
       } else { p.capture = 0; p.capturer = null; }
@@ -653,7 +834,7 @@ function draw() {
         ctx.strokeStyle = p.capturer; ctx.lineWidth = 2 / z;
         ctx.beginPath(); ctx.arc(p.x, p.y, p.r + 20 / z, -Math.PI / 2, -Math.PI / 2 + p.capture * TAU); ctx.stroke();
       }
-      if (p === playerCapital) {
+      if (p.capital) {   // anillo de capital (la tuya y las de las facciones)
         ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2 / z;
         ctx.beginPath(); ctx.arc(p.x, p.y, p.r + 34 / z, 0, TAU); ctx.stroke();
       }
@@ -680,7 +861,7 @@ function draw() {
     if (z >= 0.8 && dist2(p.x, p.y, player.x, player.y) < 700 * 700) {
       ctx.font = (6 / z) + 'px monospace'; ctx.textAlign = 'center';
       ctx.fillStyle = p.owner || '#8fa8d0';
-      ctx.fillText(p.name + (p.owner ? ' ●' : '') + (p === playerCapital ? ' ★' : ''), p.x, p.y - p.r - 4 / z);
+      ctx.fillText(p.name + (p.owner ? ' ●' : '') + (p.capital ? ' ★' : ''), p.x, p.y - p.r - 4 / z);
     }
   }
 
@@ -832,13 +1013,22 @@ function drawMinimap() {
    CLASIFICACIÓN
    ========================================================= */
 function updateBoard() {
-  const rows = [{ name: player.name + ' (tú)', credits: Math.floor(player.credits), kills: player.kills, me: true, color: player.color }];
-  for (const b of bots) if (b.alive) rows.push({ name: b.name, credits: Math.floor(b.credits), kills: b.kills || 0, me: false, color: b.color });
-  for (const r of net.remotes.values()) rows.push({ name: r.name, credits: r.credits | 0, kills: r.kills || 0, me: false, color: r.color });
-  rows.sort((a, b) => b.credits - a.credits);
+  // v0.8: clasificación por FACCIONES — planetas, naves y créditos del imperio
+  const rows = [];
+  for (const c of FACTION_COLORS) {
+    const mine = c === player.color;
+    const pl = planets.filter(p => p.owner === c).length;
+    const sh = mine ? bots.filter(b => b.built && b.alive).length + (player.alive ? 1 : 0)
+                    : bots.filter(b => b.imp && b.alive && b.color === c).length;
+    const cr = mine ? Math.floor(player.credits) : Math.floor((facState[c] && facState[c].credits) || 0);
+    rows.push({ name: mine ? player.name + ' (tú)' : facName(c), pl, sh, credits: cr, me: mine, color: c });
+  }
+  for (const r of net.remotes.values())
+    rows.push({ name: r.name, pl: 0, sh: 1, credits: r.credits | 0, me: false, color: r.color });
+  rows.sort((a, b) => b.pl - a.pl || b.credits - a.credits);
   const list = document.getElementById('board-list');
   list.innerHTML = rows.slice(0, 8).map(r =>
-    `<li class="${r.me ? 'me' : ''}"><span style="color:${r.color}">${r.name}</span><span class="c">◈${r.credits} 💀${r.kills}</span></li>`
+    `<li class="${r.me ? 'me' : ''}"><span style="color:${r.color}">${r.name}</span><span class="c">🪐${r.pl} 🛰${r.sh} ◈${r.credits}</span></li>`
   ).join('');
 }
 
@@ -986,8 +1176,8 @@ function startGame() {
 }
 
 function newGameInit() {
-  initBots();
   // v0.5: elegir planeta CAPITAL — uno neutral lejos de otros dueños
+  // (v0.8: la galaxia nace virgen, todos los planetas son neutros)
   let cap = null, bestD = -1;
   for (let i = 0; i < 40; i++) {
     const p = planets[rndi(0, planets.length - 1)];
@@ -1008,21 +1198,9 @@ function newGameInit() {
   player.y = clamp(cap.y + Math.sin(sa) * (cap.r + 90), 16, WORLD.h - 16);
   cam.x = player.x; cam.y = player.y;
   prepT = 300;   // 5 minutos de preparación protegida
-  // v0.5.1: inicio tranquilo — ningún bot tiene su hogar cerca de tu capital
-  // ni aparece en tu zona. Empiezas solo; tu flota se construye en la capital.
-  for (const b of bots) {
-    if (dist2(b.home.x, b.home.y, cap.x, cap.y) < 2600 * 2600) {
-      let nh = b.home, tries = 0;
-      do { nh = planets[rndi(0, planets.length - 1)]; tries++; }
-      while (dist2(nh.x, nh.y, cap.x, cap.y) < 2600 * 2600 && tries < 20);
-      b.home = nh;
-    }
-    if (dist2(b.x, b.y, cap.x, cap.y) < 2200 * 2200) {
-      b.x = clamp(b.home.x + rnd(-700, 700), 20, WORLD.w - 20);
-      b.y = clamp(b.home.y + rnd(-700, 700), 20, WORLD.h - 20);
-      b.waypoint = null;
-    }
-  }
+  // v0.8: cada facción IA empieza DE CERO — capital propia (lejos de la tuya) y 1 nave.
+  // Su IA conquista, mina y construye; tu flota se construye en tu capital.
+  initFactions();
   // v0.6: partida nueva — 1 caza (tu nave), hangar vacío, fondos iniciales
   player.ship = 'caza';
   hangarShips.length = 0;
@@ -1155,7 +1333,12 @@ function buyUpgrade(key) {
 // UN solo save/load coherente. Clave nueva: el save v1 queda obsoleto y se ignora.
 const SAVE_KEY = 'pixelfleet_save_v2';
 function readSave() {
-  try { return JSON.parse(localStorage.getItem(SAVE_KEY) || 'null'); } catch (e) { return null; }
+  try {
+    const d = JSON.parse(localStorage.getItem(SAVE_KEY) || 'null');
+    // v0.8: los saves anteriores (240 pilotos, sin facciones imperio) no son compatibles
+    if (d && !d.factions) { localStorage.removeItem(SAVE_KEY); return null; }
+    return d;
+  } catch (e) { return null; }
 }
 function saveGame() {
   if (!inGame || !playerCapital) return;   // nunca pisar el save desde el menú
@@ -1172,14 +1355,24 @@ function saveGame() {
       capitalIdx: planets.indexOf(playerCapital),
       prepT: Math.max(0, prepT),
       // solo planetas con dueño (los neutros son el estado inicial determinista)
-      planets: planets.map((p, i) => p.owner ? { i, owner: p.owner, shield: p.shield } : null).filter(Boolean),
+      planets: planets.map((p, i) => p.owner ? { i, owner: p.owner, shield: p.shield, cap: p.capital ? 1 : 0 } : null).filter(Boolean),
       bots: bots.map(b => ({
         name: b.name, color: b.color, x: b.x, y: b.y,
         hp: b.hp, credits: Math.floor(b.credits), kills: b.kills || 0,
         homeIdx: planets.indexOf(b.home), expandR: b.expandR,
-        alive: b.alive, built: !!b.built, role: b.role || null, shipType: b.shipType || null,
+        alive: b.alive, built: !!b.built, imp: !!b.imp, role: b.role || null, shipType: b.shipType || null,
         ox: b.ox ?? null, oy: b.oy ?? null, oplanet: b.oplanet ?? null,   // v0.7: orden activa
       })),
+      // v0.8: estado de las facciones imperio (economía, diplomacia, construcción)
+      factions: (() => {
+        const o = {};
+        for (const c in facState) o[c] = {
+          credits: Math.floor(facState[c].credits), rel: facState[c].rel, warT: facState[c].warT,
+          buildT: facState[c].buildT, building: facState[c].building,
+        };
+        return o;
+      })(),
+      playerAggro,
       hangarShips: hangarShips.slice(),
       buildQueue: buildQueue.map(q => ({ type: q.type, t: q.t })),
       standings,
@@ -1210,12 +1403,38 @@ function applySave(d) {
     playerCapital.shieldMax = 100;   // antes de aplicar escudos guardados
     playerCapital.name = 'CAPITAL ' + player.name;
   }
+  // v0.8: esqueleto de facciones imperio (antes de restaurar capitales)
+  for (const c of FACTION_COLORS) {
+    if (c === player.color) continue;
+    if (!facState[c]) facState[c] = { capital: null, credits: 10, rel: {}, warT: {}, aiT: rnd(2, 6), buildT: 0, building: false };
+    for (const o of FACTION_COLORS) if (o !== c && facState[c].rel[o] == null) facState[c].rel[o] = 0;
+  }
   for (const sp of d.planets || []) {
     const p = planets[sp.i];
     if (!p) continue;
     p.owner = sp.owner; p.shield = sp.shield;
+    // v0.8: restaurar capitales de facción (escudo grande + nombre + enlace en facState)
+    if (sp.cap && sp.owner !== player.color) {
+      p.capital = true; p.shieldMax = 100; p.name = 'CAPITAL ' + facName(sp.owner);
+      if (facState[sp.owner]) facState[sp.owner].capital = p;
+    }
   }
-  // bots (incluye wingmen del jugador: built/role/shipType)
+  // v0.8: capital de respaldo y datos guardados de cada facción
+  for (const c of FACTION_COLORS) {
+    if (c === player.color || !facState[c]) continue;
+    if (!facState[c].capital) facState[c].capital = planets.find(p => p.owner === c && p.capital) || planets.find(p => p.owner === c) || null;
+  }
+  if (d.factions) for (const c in d.factions) {
+    if (!facState[c]) continue;
+    const sv = d.factions[c];
+    facState[c].credits = sv.credits || 0;
+    facState[c].buildT = sv.buildT || 0; facState[c].building = !!sv.building;
+    if (sv.rel) facState[c].rel = sv.rel;
+    if (sv.warT) facState[c].warT = sv.warT;
+  }
+  for (const k in playerAggro) delete playerAggro[k];
+  if (d.playerAggro) Object.assign(playerAggro, d.playerAggro);
+  // bots (incluye wingmen del jugador: built/role/shipType, e imperiales: imp)
   bots.length = 0;
   for (const sb of d.bots || []) {
     const b = {
@@ -1226,6 +1445,7 @@ function applySave(d) {
       shootCd: rnd(0.5, 2), credits: sb.credits || 0, kills: sb.kills || 0,
       vx: 0, vy: 0, flash: 0,
       home: planets[sb.homeIdx] || planets[0], expandR: sb.expandR || 1500,
+      imp: !!sb.imp, task: null, retalT: 0, lastHitBy: null,   // v0.8
     };
     if (b.alive === false) b.respawnT = rnd(3, 6);
     if (sb.built) {
@@ -1804,12 +2024,14 @@ function wingmanUpdate(b, dt) {
     b.x = clamp(b.x + Math.cos(b.angle) * sp * dt, 20, WORLD.w - 20);
     b.y = clamp(b.y + Math.sin(b.angle) * sp * dt, 20, WORLD.h - 20);
   }
-  // disparo: hostiles cerca del ancla de fuego; en preparación nadie pelea
+  // disparo: SOLO a facciones en guerra contigo o provocadas por ti/tu flota
+  // (v0.8: en paz tus naves no atacan a nadie); en preparación nadie pelea
   b.shootCd -= dt;
   if (b.shootCd <= 0 && prepT <= 0 && fireAnchor) {
     let tgt = null, td = fireRange * fireRange;
     for (const o of bots) {
       if (o === b || !o.alive || o.color === player.color) continue;
+      if ((standings[o.color] || 0) > -30 && (playerAggro[o.color] || 0) <= 0) continue;   // v0.8
       const d = dist2(o.x, o.y, fireAnchor.x, fireAnchor.y);
       if (d < td) { td = d; tgt = o; }
     }
@@ -1970,6 +2192,8 @@ const _update7 = update;
 update = function (dt) {
   _update7(dt);
   if (selection.size && !selectedShips().length) selection.clear();
+  // v0.8: la provocación de facciones se enfría con el tiempo
+  for (const c in playerAggro) { playerAggro[c] -= dt; if (playerAggro[c] <= 0) delete playerAggro[c]; }
 };
 const _back7 = backToMenu;
 backToMenu = function () { selection.clear(); closeFleetMenu(); _back7(); };

@@ -54,9 +54,16 @@ with sync_playwright() as pw:
     page.wait_for_timeout(1500)
     check(page.locator('#prep-banner').is_visible(), 'banner de preparación visible')
     check(page.locator('#tutorial').is_visible(), 'tutorial visible')
-    check(page.evaluate("bots.length") == 240, '240 bots generados al entrar en partida')
+    # v0.8: facciones imperio — 5 facciones IA, cada una con capital y 1 sola nave
+    check(page.evaluate("bots.length") == 5, '5 facciones IA con 1 nave cada una (inicio de cero)')
     check(page.evaluate("bots.filter(b => b.color === player.color).length") == 0,
           'ningún bot con el color del jugador')
+    check(page.evaluate("planets.filter(p => p.capital && p.owner && p.owner !== player.color).length") == 5,
+          'cada facción IA tiene su capital (5 capitales enemigas)')
+    check(page.evaluate("planets.filter(p => p.owner).length") == 6,
+          'galaxia virgen: solo las 6 capitales tienen dueño')
+    check(page.evaluate("Object.keys(facState).every(c => Object.values(facState[c].rel).every(v => v === 0))"),
+          'todas las facciones empiezan NEUTRALES entre sí')
     check(page.evaluate("Math.floor(player.credits)") >= 40, 'fondos iniciales (40◈)')
     check(page.evaluate("player.ship") == 'caza' and page.evaluate("hangarShips.length") == 0,
           'empieza con 1 caza y hangar vacío')
@@ -222,13 +229,21 @@ with sync_playwright() as pw:
     pos = page.evaluate("(() => { const b = bots.find(x => x.built && x.alive);"
                         " return { x: 2*((b.x - cam.x)*cam.zoom + VW/2), y: 2*((b.y - cam.y)*cam.zoom + VH/2) }; })()")
     page.keyboard.down('Shift')
-    page.mouse.move(pos['x'] - 90, pos['y'] - 90)
+    page.mouse.move(pos['x'] - 140, pos['y'] - 140)
     page.mouse.down()
-    page.mouse.move(pos['x'] + 90, pos['y'] + 90, steps=6)
+    page.mouse.move(pos['x'] + 140, pos['y'] + 140, steps=6)
     page.mouse.up()
     page.keyboard.up('Shift')
     page.wait_for_timeout(150)
-    check(page.evaluate("selection.size") == 1, 'SHIFT+arrastre vuelve a seleccionar')
+    ok = page.evaluate("selection.size") == 1
+    if not ok:
+        dbg = page.evaluate("""(() => { const b = bots.find(x => x.built && x.alive);
+          const sx = 2*((b.x - cam.x)*cam.zoom + VW/2), sy = 2*((b.y - cam.y)*cam.zoom + VH/2);
+          const el = document.elementFromPoint(sx - 90, sy - 90);
+          return { sel: selection.size, sx: Math.round(sx), sy: Math.round(sy),
+                   el: el ? (el.id || el.tagName) : 'none' }; })()""")
+        print('  [debug reselect]', dbg)
+    check(ok, 'SHIFT+arrastre vuelve a seleccionar')
     page.keyboard.press('Escape')
     page.wait_for_timeout(100)
     check(page.evaluate("selection.size") == 0, 'ESC cancela la selección sin dar orden')
@@ -237,6 +252,88 @@ with sync_playwright() as pw:
     page.wait_for_timeout(400)
     page.mouse.up()
     check(page.evaluate("projectiles.length") > 0, 'sin selección el clic vuelve a disparar')
+
+    # ===== 5c. v0.8: IA de facciones — neutralidad, provocación, conquista, minería =====
+    print('— v0.8: facciones imperio (IA real) —')
+    page.evaluate("prepT = 0")   # terminar la preparación: sin esto nadie dispara
+    page.wait_for_timeout(300)
+    page.evaluate("window.__wing = bots.find(b => b.built)")
+    # otra facción (no la de la guerra declarada en el test de diplomacia)
+    other = page.evaluate(f"FACTION_COLORS.find(c => c !== player.color && c !== '{fac}')")
+    page.evaluate(f"""(() => {{
+      const wing = window.__wing;
+      const en = bots.find(b => b.imp && b.color === '{other}');
+      window.__en = en;
+      en.x = wing.x + 120; en.y = wing.y; wing.shootCd = 0; en.shootCd = 0;
+    }})()""")
+    page.wait_for_timeout(1500)
+    check(not page.evaluate("projectiles.some(pr => pr.owner === window.__wing)"),
+          'wingman NO dispara a una facción neutral aunque la tenga al lado')
+    # tú provocas a esa facción → tus naves ya pueden atacarla
+    page.evaluate(f"playerAggro['{other}'] = 45; window.__wing.shootCd = 0;")
+    page.wait_for_timeout(1800)
+    check(page.evaluate("projectiles.some(pr => pr.owner === window.__wing)"),
+          'si TÚ atacas primero (provocación), el wingman sí dispara')
+    page.evaluate(f"delete playerAggro['{other}']")
+
+    # la IA conquista planetas neutrales por presencia
+    page.evaluate("""(() => {
+      const b = bots.find(x => x.imp);
+      window.__conq = b;
+      facState[b.color].aiT = 999;   // que no le reasignen la tarea durante el check
+      // el planeta neutral más alejado de otras naves imperiales (sin disputas)
+      let p = null, best = -1;
+      for (const q of planets) {
+        if (q.owner) continue;
+        let dmin = 1e18;
+        for (const o of bots) {
+          if (o === b || !o.imp || !o.alive) continue;
+          const d = (o.x-q.x)**2 + (o.y-q.y)**2;
+          if (d < dmin) dmin = d;
+        }
+        if (dmin > best) { best = dmin; p = q; }
+      }
+      window.__planet = p;
+      b.task = { type: 'conquer', p };
+      b.x = p.x + p.r + 5; b.y = p.y; b.waypoint = null;
+    })()""")
+    page.wait_for_timeout(7000)
+    check(page.evaluate("window.__planet.owner") == page.evaluate("window.__conq.color"),
+          'la IA conquista un planeta neutral por presencia')
+
+    # la IA mina asteroides para la hucha de su facción
+    creds0 = page.evaluate("""(() => {
+      const b = bots.find(x => x.imp && x !== window.__conq) || window.__conq;
+      window.__miner = b;
+      facState[b.color].aiT = 999;
+      let best = null, bd = 1e18;
+      for (const a of asteroids) { if (!a.alive) continue;
+        const d = (a.x-b.x)**2 + (a.y-b.y)**2; if (d < bd) { bd = d; best = a; } }
+      b.task = { type: 'mine', a: best };
+      b.x = best.x + 120; b.y = best.y; b.shootCd = 0;
+      return Math.floor(facState[b.color].credits);
+    })()""")
+    page.wait_for_timeout(2500)
+    check(page.evaluate("projectiles.some(pr => pr.owner === window.__miner)")
+          or page.evaluate("Math.floor(facState[window.__miner.color].credits)") > creds0,
+          'la IA dispara a asteroides (minería)')
+
+    # guerra entre facciones IA: solo entonces se atacan entre ellas
+    page.evaluate(f"""(() => {{
+      const A = bots.find(b => b.imp && b.color !== '{other}');
+      const B = bots.find(b => b.imp && b.color === '{other}');
+      window.__wa = A; window.__wb = B;
+      setRel(A.color, B.color, -100);
+      facState[A.color].aiT = 999; facState[B.color].aiT = 999;
+      A.task = {{ type: 'defend' }}; B.task = {{ type: 'defend' }};
+      A.x = 4000; A.y = 4000; B.x = 4150; B.y = 4000;
+      A.shootCd = 0; B.shootCd = 0;
+    }})()""")
+    page.wait_for_timeout(1500)
+    check(page.evaluate("projectiles.some(pr => pr.owner === window.__wa || pr.owner === window.__wb)"),
+          'dos facciones en GUERRA se disparan al verse')
+    page.evaluate("setRel(window.__wa.color, window.__wb.color, 0)")
+    page.screenshot(path=str(SHOTS / 'ui_facciones.png'))
 
     # ===== 6. chat =====
     print('— chat —')
@@ -265,6 +362,8 @@ with sync_playwright() as pw:
 
     # ===== 8. persistencia total: recargar y continuar =====
     print('— persistencia: CONTINUAR PARTIDA —')
+    # congelar la construcción de las facciones para que el recuento sea determinista
+    page.evaluate("for (const c in facState) { facState[c].building = false; facState[c].credits = 0; }")
     page.evaluate("saveGame()")
     saved = page.evaluate("({credits: Math.floor(player.credits), bots: bots.length, "
                           "hangar: hangarShips.join(','), ship: player.ship, "

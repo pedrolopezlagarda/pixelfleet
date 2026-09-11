@@ -91,10 +91,11 @@ los 10 segundos.
 - [ ] Recursos por planeta: además de créditos, cada planeta da mineral o
       combustible según su tipo (visual: paleta del planeta). Los escudos se
       recargan con mineral.
-- [ ] Diplomacia más lenta: guerras se declaran, no pasan por un malentendido de 3
-      disparos. Los bots no disparan salvo guerra declarada. *(v0.6: avance — daño
-      simétrico con memoria persistente, hostil a -10 y guerra declarada a -30;
-      falta que la paz sea totalmente segura)*
+- [x] Diplomacia más lenta: guerras se declaran, no pasan por un malentendido de 3
+      disparos. Los bots no disparan salvo guerra declarada. *(v0.6: daño
+      simétrico con memoria persistente. **v0.8: hecho del todo** — neutralidad
+      total por defecto, guerras declaradas por estrategia (poder ×1.6), wingmen
+      solo atacan en guerra o si tú provocas primero; la paz es segura)*
 
 ### Fase F — UI estratégica
 - [ ] Panel de imperio (tecla TAB): lista de planetas propios, producción, naves,
@@ -127,6 +128,34 @@ Control estilo Age of Empires de las naves desplegadas. Diseño completo en el v
       adelante — p. ej. nuevos pasos del tutorial guiado enseñando SHIFT+arrastre
       y el menú de botón derecho).
 - Subsume el ítem «órdenes con clic derecho» de la Fase F.
+
+### Fase H — Facciones imperio: IA real (v0.8, implementada 2026-09-11)
+Pedido de Pedro: «cada facción empieza de cero con una sola nave; la IA debe
+capturar planetas y recoger asteroides; facciones neutrales por norma, que solo
+atanquen si les conviene estratégicamente o se alíen; tus naves que te siguen no
+atacan a nadie salvo que tú empieces o haya guerra». Nota del vault:
+`PixelFleet - Facciones imperio IA (v0.8)`.
+- [x] **Todas las facciones empiezan de cero**: galaxia virgen (sin planetas
+      pre-conquistados); cada facción IA con capital propia (escudo 100, lejos de
+      las demás) y **1 sola nave**. Adiós a los 240 pilotos sueltos.
+- [x] **IA de verdad** (tareas por nave): CONQUISTAR el planeta neutral más
+      cercano (por presencia, máx. 2 naves por planeta), MINAR asteroides (los ◈
+      van a la hucha de la facción), DEFENDER la capital y ATACAR en guerra.
+      La facción acumula ◈ y **construye naves** (60◈, 20 s; tope = 2 + planetas
+      propios). Muerte real también para las naves imperiales.
+- [x] **Diplomacia estratégica facción↔facción**: neutrales por defecto y NADIE
+      ataca en paz. Cada ~40 s cada facción decide por poder relativo: guerra si
+      muy superior (×1.6, 25 %), alianza si igualados (15 %), paz si la guerra va
+      mal o se alarga. Guerras, paces, alianzas y caídas de capitales se anuncian
+      en el chat.
+- [x] **Disciplina de fuego de tus wingmen**: en paz no atacan a nadie; solo si
+      estáis en GUERRA o si tú/tu flota dañáis primero a esa facción
+      (provocación ~45 s; dañar escudos también cuenta). Defensa propia: si os
+      disparan a ti o a tu flota, pueden responder.
+- [x] **Clasificación por imperios** (🪐 planetas · 🛰 naves · ◈ créditos) y
+      capitales enemigas visibles con ★ y anillo blanco.
+- [x] Save v2 ampliado: estado de facciones (economía, relaciones, construcción),
+      capitales de facción y provocaciones. E2E: **84 checks verdes**.
 
 ## RESTRICCIONES TÉCNICAS
 - Vanilla JS + canvas, mismo estilo pixel-art. Nada de frameworks pesados.

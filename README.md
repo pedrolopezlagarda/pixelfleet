@@ -1,11 +1,13 @@
-# 🚀 PIXEL FLEET — v0.7
+# 🚀 PIXEL FLEET — v0.8
 
 Juego de **estrategia espacial** vista cenital, pixel-art, multijugador.
-Empiezas en tu **planeta capital** (escudo de 100 pts) con un caza y
-**5 minutos de preparación protegida**. Construyes tu flota nave a nave y la
-controlas como en un **RTS**: selección por cuadro, órdenes de grupo con el
-botón derecho (defender tal planeta, atacar tal zona…). Y **todo se guarda**:
-tu partida y la de los 240 bots continúan exactamente donde las dejaste.
+**Todas las facciones empiezan de cero**: su planeta capital y **una sola nave**,
+igual que tú. La IA juega de verdad: conquista planetas, mina asteroides y
+construye naves; negocia guerras y alianzas por pura **estrategia**. Empiezas en
+tu **capital** (escudo de 100 pts) con un caza y **5 minutos de preparación
+protegida**. Construyes tu flota nave a nave y la controlas como en un **RTS**:
+selección por cuadro, órdenes de grupo con el botón derecho. Y **todo se guarda**:
+tu partida y la de las facciones continúan exactamente donde las dejaste.
 
 ---
 
@@ -50,19 +52,19 @@ muestra el atajo de teclado). No hace falta memorizar nada.
 - **Preparación (5:00)**: tu capital es invulnerable y los bots no te atacan ni entran
   en su radio. Banner con cuenta atrás; al acabar, la galaxia entra en juego.
 - La capital **produce ×3 créditos** desde el primer segundo (partida nueva: 40◈ de fondos).
-  **Economía igualada**: los bots juegan con las mismas reglas — su capital produce igual
-  y ganan por los planetas de su facción; nadie empieza con ventaja.
+  **Economía igualada**: las facciones IA juegan con las mismas reglas — su capital
+  produce igual y ganan por sus planetas; nadie empieza con ventaja.
 - **Tutorial guiado** al entrar (partida nueva): 6 pasos que se completan con acciones
   reales. Se cierra con **T**.
 - **Sin fuego amigo**: las naves y planetas de tu color son inmunes a tus disparos
   (y tú a los suyos). Los aliados nunca se atacan entre sí.
 - Ritmo pausado: naves, bots, proyectiles y conquistas más lentos (la conquista tarda 6 s).
-- Los bots tienen **capitales propias** y expanden su radio de acción lentamente:
-  ya no aparecen a tu lado a los 10 segundos.
+- Las facciones IA tienen **capitales propias** lejos de la tuya y expanden su
+  imperio con su IA (v0.8): ya nadie aparece a tu lado a los 10 segundos.
 
 ### 🚀 Flota real (v0.6)
-**Nada aparece gratis**: toda nave de tu color la has construido tú (los 240 bots
-son siempre de otras facciones). Desde el hangar (H), junto a tu capital:
+**Nada aparece gratis**: toda nave de tu color la has construido tú (las facciones
+imperio son siempre de otros colores). Desde el hangar (H), junto a tu capital:
 
 | Nave | Características | Coste | Construcción |
 |---|---|---|---|
@@ -95,15 +97,40 @@ Tus naves desplegadas se controlan como en un **Age of Empires**:
   PLANETA** (lista de tus planetas conquistados, capital incluida) **· SEGUIRME ·
   GUARNICIÓN · PARAR · RECOGER** al hangar. Vale para **una nave o todo el grupo**
   (el menú indica a cuántas aplica).
-- **ESC** suelta la selección. Con selección activa el clic da órdenes (no dispara);
-  suelta la selección para volver a disparar.
+- **ESC** cancela la selección sin dar orden. Con selección activa el clic da
+  órdenes (no dispara); **al dar cualquier orden la selección se suelta sola**
+  (v0.7.1) y vuelves a pilotar y disparar al instante.
 - Las órdenes **se guardan en la partida**: al continuar, tu flota sigue ejecutándolas.
 
-### 💾 Persistencia total (v0.6)
+### 🌌 Facciones imperio: IA real (v0.8)
+- **Inicio de cero**: galaxia virgen, sin planetas pre-conquistados. Cada facción
+  IA (Aqua, Áurea, Carmesí, Verdi, Violeta, Ámbar — las que no elijas) empieza con
+  su **capital** (★ visible, escudo 100) lejos de las demás y **1 sola nave**.
+- **La IA juega**: sus naves **conquistan** planetas neutrales por presencia,
+  **minan** asteroides (los ◈ van a la hucha de la facción) y **defienden** su
+  capital. Con 60◈ la facción **construye una nave nueva** (20 s; tope = 2 +
+  planetas propios). Las naves imperiales **mueren de verdad**.
+- **Neutralidad por defecto**: nadie ataca a nadie en paz. Cada ~40 s cada
+  facción decide por **estrategia**: si es mucho más fuerte que otra puede
+  **declararle la guerra**; si están igualadas, **aliarse**; y si la guerra va
+  mal, **firmar la paz**. Todo se anuncia en el chat (también la caída de
+  capitales). Solo hay combate facción↔facción en guerra declarada o como
+  **represalia** si les disparas.
+- **Tus wingmen tienen disciplina**: en paz **no atacan a ninguna nave**, aunque
+  la tengan al lado. Solo abren fuego si estáis en **GUERRA** con esa facción o
+  si **tú empiezas** a dañarla (tus disparos y los de tu flota «provocan» a la
+  facción ~45 s; dañar sus escudos también cuenta). Si os disparan primero,
+  pueden responder en defensa propia.
+- **Clasificación por imperios**: planetas 🪐, naves 🛰 y créditos ◈ de cada
+  facción, ordenados por expansión.
+
+### 💾 Persistencia total (v0.6/v0.8)
 **Todo se guarda** (`localStorage`, save v2): tu posición, nave, mejoras y economía;
-los **240 bots con su economía, hogar y estado de IA**; los planetas y sus dueños y
-escudos; tu flota (hangar, wingmen y cola); la diplomacia; los contratos y el tiempo
-de preparación restante. El mundo es determinista: siempre la misma galaxia.
+el **estado completo de cada facción imperio** (naves, hucha, relaciones,
+construcción en curso); los planetas con sus dueños, escudos y capitales; tu flota
+(hangar, wingmen, cola y órdenes RTS); la diplomacia; las provocaciones; los
+contratos y el tiempo de preparación restante. El mundo es determinista: siempre
+la misma galaxia.
 Al continuar, la partida sigue exactamente donde la dejaste — para todos.
 **🗑 BORRAR PARTIDA** (ajustes) lo reinicia todo.
 
@@ -149,11 +176,11 @@ Escribe un **código de sala** en el menú: solo ves y hablas con los de tu sala
 En sala compite un **torneo: el primero en lograr 10 bajas gana**.
 
 ### 🏆 Clasificación · 💬 Chat · 🗺️ Minimapa
-Top 8 por créditos y bajas · chat con ENTER (los bots conversan) · planetas por facción,
-asteroides grises, tú en blanco.
+Top de **imperios** por planetas, naves y créditos · chat con ENTER · planetas por
+facción, asteroides grises, tú en blanco.
 
 ### 👾 Multijugador
-Modo simulado (240 bots) sin servidor. Con `server.js`:
+Modo simulado (5 facciones imperio con IA) sin servidor. Con `server.js`:
 
 ```bash
 npm install ws
@@ -170,7 +197,7 @@ Posiciones a 10 Hz, disparos y chat retransmitidos **por sala**.
 | `style.css` | Estilo retro pixelado |
 | `game.js` | Motor completo + sistemas v0.3/v0.4/v0.5/v0.6 |
 | `server.js` | Servidor WebSocket multijugador con salas |
-| `tools/verify_ui.py` | Test E2E real (Playwright): 72 checks — menús, clics, flota, RTS, persistencia, zoom |
+| `tools/verify_ui.py` | Test E2E real (Playwright): 84 checks — menús, clics, flota, RTS, facciones IA, persistencia, zoom |
 | `README.md` | Este documento |
 
 ### Tests E2E
@@ -189,7 +216,7 @@ jefes de facción · estaciones espaciales comerciales · mapas con agujeros de 
 
 ---
 
-*v0.7 · control RTS de flota (selección por cuadro + órdenes) · persistencia total · diplomacia con memoria*
+*v0.8 · facciones imperio con IA real (conquista, minería, diplomacia estratégica) · control RTS · persistencia total*
 
-> ⚠️ El save v0.6 (`pixelfleet_save_v2`) no es compatible con partidas de v0.5:
+> ⚠️ El save v0.8 (`pixelfleet_save_v2`) no es compatible con partidas de v0.5-v0.7:
 > al entrar por primera vez empezarás una partida nueva.
