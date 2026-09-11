@@ -1,7 +1,8 @@
 /* =========================================================
-   PIXEL FLEET — motor del juego (v0.6)
+   PIXEL FLEET — motor del juego (v0.7)
    Conquista de planetas · economía · combate · chat
-   Flota real construible · persistencia total (save v2)
+   Flota real construible · control RTS de flota (selección por
+   cuadro + órdenes) · persistencia total (save v2)
    Multijugador simulado localmente + servidor WS preparado.
    ========================================================= */
 
