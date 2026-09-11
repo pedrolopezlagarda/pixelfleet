@@ -780,7 +780,7 @@ function draw() {
     }
     if (selection.size) {
       ctx.font = '10px monospace'; ctx.textAlign = 'center'; ctx.fillStyle = '#7ef9ff';
-      ctx.fillText('🛰️ ' + selection.size + ' seleccionada(s) · CLIC: mover · CLIC DERECHO: órdenes · ESC: soltar', VW / 2, VH - 4);
+      ctx.fillText('🛰️ ' + selection.size + ' seleccionada(s) · CLIC: mover · CLIC DERECHO: órdenes (ambos sueltan la selección) · ESC: cancelar', VW / 2, VH - 4);
     }
     // restaurar el transform de mundo: los wrappers posteriores (asteroides) lo necesitan
     ctx.setTransform(z, 0, 0, z, VW / 2 - cam.x * z, VH / 2 - cam.y * z);
@@ -1835,8 +1835,9 @@ update = function (dt) {
    Con naves seleccionadas: CLIC izquierdo = mover el grupo ahí;
    CLIC DERECHO = menú de órdenes (mover/atacar esta zona,
    defender un planeta propio, seguirme, guarnición, parar,
-   recoger). ESC suelta la selección. Las órdenes se guardan
-   en el save (ox/oy/oplanet de cada nave).
+   recoger). Dar cualquier orden suelta la selección (v0.7.1:
+   vuelves a pilotar y disparar); ESC la cancela sin ordenar.
+   Las órdenes se guardan en el save (ox/oy/oplanet de cada nave).
    ========================================================= */
 const selection = new Set();          // uids de wingmen seleccionados
 let selectBox = null;                 // {x0,y0,x1,y1} en px de cliente durante el arrastre
@@ -1875,7 +1876,7 @@ function selFinish() {
         selection.add(b.uid);
   }
   if (selection.size)
-    chatSys('🛰️ ' + selection.size + ' nave(s) seleccionada(s). CLIC: mover · CLIC DERECHO: órdenes · ESC: soltar.');
+    chatSys('🛰️ ' + selection.size + ' nave(s) seleccionada(s). CLIC: mover · CLIC DERECHO: órdenes (al dar la orden se suelta la selección) · ESC: cancelar.');
 }
 function orderGroup(role, x, y, pidx) {
   const list = selectedShips();
@@ -1901,6 +1902,7 @@ function orderMoveTo(cx, cy) {
   if (!selectedShips().length) { selection.clear(); return; }
   const w = clientToWorld(cx, cy);
   orderGroup('move', clamp(w.x, 20, WORLD.w - 20), clamp(w.y, 20, WORLD.h - 20), null);
+  selection.clear();   // v0.7.1: dar la orden suelta la selección (vuelves a pilotar/disparar)
 }
 
 /* --- menú contextual de órdenes (botón derecho) --- */
@@ -1944,7 +1946,8 @@ function openFleetMenu(cx, cy) {
     if (act === 'follow')   orderGroup('follow', null, null, null);
     if (act === 'garrison') orderGroup('garrison', null, null, null);
     if (act === 'hold')     orderGroup('hold', null, null, null);
-    if (act === 'recall')   { for (const b of selectedShips()) recallShip(b.uid); selection.clear(); }
+    if (act === 'recall')   { for (const b of selectedShips()) recallShip(b.uid); }
+    selection.clear();      // v0.7.1: cualquier orden dada suelta la selección
     closeFleetMenu();
   });
 }

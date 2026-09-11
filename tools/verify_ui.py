@@ -186,8 +186,12 @@ with sync_playwright() as pw:
     check(page.evaluate("bots.find(b => b.built).role") == 'move', 'CLIC con selección = orden MOVER al punto')
     check(page.evaluate("bots.find(b => b.built).ox !== null"), 'la orden guarda el destino (ox/oy)')
     check(page.evaluate("projectiles.length") == 0, 'el clic de orden tampoco dispara')
+    check(page.evaluate("selection.size") == 0, 'dar la orden MOVER suelta la selección (v0.7.1)')
 
-    page.mouse.click(600, 350, button='right')
+    # sin selección, clic derecho sobre la nave la selecciona y abre el menú
+    pos = page.evaluate("(() => { const b = bots.find(x => x.built && x.alive);"
+                        " return { x: 2*((b.x - cam.x)*cam.zoom + VW/2), y: 2*((b.y - cam.y)*cam.zoom + VH/2) }; })()")
+    page.mouse.click(pos['x'], pos['y'], button='right')
     page.wait_for_timeout(200)
     check(page.locator('#fleet-menu').is_visible(), 'CLIC DERECHO abre el menú de órdenes')
     check('1 nave(s)' in page.locator('#fleet-menu').inner_text(), 'el menú indica cuántas naves reciben la orden')
@@ -202,17 +206,32 @@ with sync_playwright() as pw:
     check(page.evaluate("bots.find(b => b.built).oplanet") == page.evaluate("planets.indexOf(playerCapital)"),
           'el planeta a defender es la capital (oplanet correcto)')
     check(not page.locator('#fleet-menu').is_visible(), 'el menú se cierra tras elegir orden')
+    check(page.evaluate("selection.size") == 0, 'orden del menú también suelta la selección (v0.7.1)')
     page.screenshot(path=str(SHOTS / 'ui_rts_menu.png'))
 
-    page.mouse.click(650, 380, button='right')
+    pos = page.evaluate("(() => { const b = bots.find(x => x.built && x.alive);"
+                        " return { x: 2*((b.x - cam.x)*cam.zoom + VW/2), y: 2*((b.y - cam.y)*cam.zoom + VH/2) }; })()")
+    page.mouse.click(pos['x'], pos['y'], button='right')
     page.wait_for_timeout(150)
     page.click('#fleet-menu button[data-fm="attack"]')
     page.wait_for_timeout(150)
     check(page.evaluate("bots.find(b => b.built).role") == 'attack', 'orden ATACAR ESTA ZONA aplicada')
+    check(page.evaluate("selection.size") == 0, 'ATACAR también suelta la selección')
 
+    # ESC sigue cancelando una selección sin dar orden
+    pos = page.evaluate("(() => { const b = bots.find(x => x.built && x.alive);"
+                        " return { x: 2*((b.x - cam.x)*cam.zoom + VW/2), y: 2*((b.y - cam.y)*cam.zoom + VH/2) }; })()")
+    page.keyboard.down('Shift')
+    page.mouse.move(pos['x'] - 90, pos['y'] - 90)
+    page.mouse.down()
+    page.mouse.move(pos['x'] + 90, pos['y'] + 90, steps=6)
+    page.mouse.up()
+    page.keyboard.up('Shift')
+    page.wait_for_timeout(150)
+    check(page.evaluate("selection.size") == 1, 'SHIFT+arrastre vuelve a seleccionar')
     page.keyboard.press('Escape')
     page.wait_for_timeout(100)
-    check(page.evaluate("selection.size") == 0, 'ESC suelta la selección')
+    check(page.evaluate("selection.size") == 0, 'ESC cancela la selección sin dar orden')
     page.mouse.move(500, 300)
     page.mouse.down()
     page.wait_for_timeout(400)
