@@ -202,6 +202,13 @@ body {
   padding: 8px 18px; font-size: 14px; letter-spacing: 2px; color: #7ef9ff;
   text-shadow: 1px 1px 0 #000; pointer-events: none; text-align: center; }
 
+/* ===== v1.2 — banner de victoria/derrota ===== */
+#end-banner { position: fixed; top: 90px; left: 50%; transform: translateX(-50%);
+  z-index: 7; background: rgba(11,16,48,.92); border: 3px solid #ffd166;
+  padding: 10px 22px; font-size: 16px; letter-spacing: 2px; color: #ffd166;
+  text-shadow: 1px 1px 0 #000; pointer-events: none; text-align: center; }
+#end-banner.defeat { border-color: #ff6b8a; color: #ff6b8a; }
+
 /* ===== v0.5.2 — tutorial guiado ===== */
 #tutorial { position: fixed; bottom: 64px; left: 50%; transform: translateX(-50%);
   z-index: 8; max-width: 520px; background: rgba(11,16,48,.92); border: 3px solid #ffd166;

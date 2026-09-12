@@ -1,4 +1,4 @@
-# 🚀 PIXEL FLEET — v1.0
+# 🚀 PIXEL FLEET — v1.2
 
 Juego de **estrategia espacial** vista cenital, pixel-art, multijugador.
 **Todas las facciones empiezan de cero**: su planeta capital y **una sola nave**,
@@ -179,10 +179,22 @@ chat). Tributo 100◈ (+40), guerra manual, deriva pacífica lenta.
 - Conquistar: **+10 ◈**. Cada planeta propio: **+1 ◈/s** (la capital ×3). Zonas enemigas
   contestan la captura.
 
-### 💥 Combate
-- Bots: 3 impactos · tú: 5 de vida (ampliables). Baja enemiga: **+25 ◈**.
-- Las bajas de tus wingmen cuentan para ti (créditos y contratos).
-- La IA ataca según la diplomacia: en paz no te tocan; en guerra te cazan.
+### 💥 Combate y economía estratégica (v1.1)
+- **HP alto**: naves de 10-20 impactos (tú: 12 base, +2 por nivel de blindaje;
+  el Acorazado suma +9). Las bajas cuestan: **+25 ◈** por nave enemiga.
+- **Reparación con coste**: junto a un planeta propio, tu nave se repara
+  (+1 HP / 1,5 s por 5◈); tus wingmen también (+1/2 s por 2◈). La IA se repara
+  junto a sus planetas.
+- **Recursos por tipo de planeta** (icono junto al nombre): ⛏ **mineral**
+  (produce ⛏ y alimenta la **recarga de escudos** de tus planetas — sin mineral
+  no se regeneran), ⛽ **gas** (repostaje ×2), ◈ **créditos** (ingreso ×1; los
+  demás ×0,5).
+- **Victoria y derrota reales (v1.2)**: una facción **cae** cuando se queda sin
+  planetas, naves ni construcción (la construcción muere con la capital).
+  Elimina a las 5 facciones IA → **🏆 VICTORIA** (y puedes seguir en modo libre).
+  Si tú te quedas sin planetas → **💀 imperio caído** hasta que reconquistes uno.
+- La **guerra declarada ya no se enfría sola**: hay que pagar tributo para salir
+  de ella. Las hostilidades leves sí se olvidan con el tiempo.
 
 ### ⛽ Combustible y minería
 - Impulso caro (40/s); repostaje **solo junto a planetas** (propios 30/s, aliados
@@ -224,7 +236,7 @@ Posiciones a 10 Hz, disparos y chat retransmitidos **por sala**.
 | `style.css` | Estilo retro pixelado |
 | `game.js` | Motor completo + sistemas v0.3/v0.4/v0.5/v0.6 |
 | `server.js` | Servidor WebSocket multijugador con salas |
-| `tools/verify_ui.py` | Test E2E real (Playwright): 101 checks — menús, clics, flota, RTS, facciones IA, niebla, persistencia, zoom |
+| `tools/verify_ui.py` | Test E2E real (Playwright): 112 checks — menús, clics, flota, RTS, facciones IA, niebla, economía, victoria, persistencia, zoom |
 | `README.md` | Este documento |
 
 ### Tests E2E
@@ -244,7 +256,7 @@ espaciales comerciales · mapas con agujeros de gusano.
 
 ---
 
-*v1.0 · ritmo y distancias (mundo 12000, combustible serio) · niebla de guerra · facciones con IA real · control RTS · persistencia total*
+*v1.2 · victoria real · economía estratégica (⛏/⛽/◈) · HP alto y reparación · niebla de guerra · facciones con IA · control RTS*
 
 > ⚠️ El save v1.0 (`pixelfleet_save_v2`) no es compatible con partidas de versiones
 > anteriores (el mundo cambia de tamaño): al entrar empezarás una partida nueva.

@@ -67,6 +67,12 @@ with sync_playwright() as pw:
     check(page.evaluate("Math.floor(player.credits)") >= 40, 'fondos iniciales (40◈)')
     check(page.evaluate("player.ship") == 'caza' and page.evaluate("hangarShips.length") == 0,
           'empieza con 1 caza y hangar vacío')
+    # v1.1: HP alto y recursos por planeta
+    check(page.evaluate("player.maxHp") == 12, 'HP alto: empiezas con 12 HP (v1.1)')
+    check(page.evaluate("planets.every(p => ['mineral','gas','creditos'].includes(p.res))"),
+          'cada planeta tiene recurso (⛏/⛽/◈)')
+    check(page.evaluate("new Set(planets.map(p => p.res)).size") == 3, 'hay planetas de los 3 recursos')
+    check(page.locator('#mineral').inner_text().startswith('⛏'), 'HUD muestra el mineral')
     check('TesterV6' in page.locator('#hud-name').inner_text(), 'HUD muestra el nombre elegido')
 
     # ===== 2. tienda =====
@@ -270,9 +276,11 @@ with sync_playwright() as pw:
     check(not page.evaluate("projectiles.some(pr => pr.owner === window.__wing)"),
           'wingman NO dispara a una facción neutral aunque la tenga al lado')
     # tú provocas a esa facción → tus naves ya pueden atacarla
-    page.evaluate(f"playerAggro['{other}'] = 45; window.__wing.shootCd = 0;")
-    page.wait_for_timeout(1800)
-    check(page.evaluate("projectiles.some(pr => pr.owner === window.__wing)"),
+    page.evaluate(f"playerAggro['{other}'] = 45; window.__wing.shootCd = 0; window.__hpEn = window.__en.hp;")
+    page.wait_for_timeout(2000)
+    check(page.evaluate("""window.__en.hp < window.__hpEn
+          || projectiles.some(pr => pr.owner === window.__wing)
+          || window.__wing.shootCd > 0.4"""),
           'si TÚ atacas primero (provocación), el wingman sí dispara')
     page.evaluate(f"delete playerAggro['{other}']")
 
@@ -412,6 +420,40 @@ with sync_playwright() as pw:
           'el icono queda resaltado con el panel abierto')
     page.keyboard.press('Escape')
     page.wait_for_timeout(150)
+
+    # ===== 5e. v1.1: escudos con mineral + reparación · v1.2: victoria real =====
+    print('— v1.1: economía estratégica —')
+    page.evaluate("player.x = playerCapital.x + playerCapital.r + 10; player.y = playerCapital.y; player.vx = player.vy = 0;")
+    page.evaluate("playerCapital.shield = 50; player.mineral = 10;")
+    page.wait_for_timeout(2000)
+    check(page.evaluate("playerCapital.shield") > 51, 'el escudo de tu planeta se RECARGA con mineral')
+    # la capital puede ser minera (produce mientras consume): margen +1 por producción
+    check(page.evaluate("player.mineral") < 10.5, 'la recarga consume ⛏ mineral')
+    creds0 = page.evaluate("Math.floor(player.credits)")
+    page.evaluate("player.hp = 5;")
+    page.wait_for_timeout(2000)
+    check(page.evaluate("player.hp") > 5, 'junto a tu planeta la nave se REPARA (+1 HP/1,5 s)')
+    check(page.evaluate("Math.floor(player.credits)") <= creds0 + 2, 'la reparación cuesta créditos (5◈/HP)')
+
+    print('— v1.2: victoria y derrota reales —')
+    page.evaluate(f"""(() => {{
+      for (const b of bots) if (b.imp && b.color === '{other}') b.alive = false;
+      for (const p of planets) if (p.owner === '{other}') p.owner = null;
+      facState['{other}'].building = false;   // sin capital, la construcción muere
+    }})()""")
+    page.wait_for_timeout(2500)
+    check('ha CAÍDO' in page.locator('#chat-log').inner_text(), 'eliminar planetas+naves de una facción la da por CAÍDA (chat)')
+    page.evaluate("""(() => {
+      for (const b of bots) if (b.imp) b.alive = false;
+      for (const p of planets) if (p.owner && p.owner !== player.color) p.owner = null;
+      for (const c in facState) facState[c].building = false;
+    })()""")
+    page.wait_for_timeout(2500)
+    check(page.locator('#end-banner').is_visible()
+          and 'VICTORIA' in page.locator('#end-banner').inner_text(),
+          'sin facciones IA vivas → banner de VICTORIA')
+    check(page.evaluate("victory === true"), 'estado de victoria activo (y la partida sigue)')
+    page.screenshot(path=str(SHOTS / 'ui_victoria.png'))
 
     # ===== 6. chat =====
     print('— chat —')

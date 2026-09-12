@@ -90,18 +90,20 @@ los 10 segundos.
 - [x] Las naves cuestan créditos y tardan en construirse (cola de construcción en la
       capital). Empezar con 2-3 naves, no con infinitas vidas gratis. *(v0.6: 4 tipos
       construibles; empiezas con 1 caza y hangar vacío)*
-- [ ] HP de naves altas (10-20 impactos) y daño por tipo de arma; reparar en
-      planetas propios cuesta créditos y tiempo.
+- [x] HP de naves altas (10-20 impactos) y daño por tipo de arma; reparar en
+      planetas propios cuesta créditos y tiempo. *(v1.1: jugador 12 HP base +2/nivel
+      de blindaje, wingmen 10+mod, imperiales 10; reparación junto a planeta propio
+      +1 HP/1,5 s por 5◈; wingmen +1/2 s por 2◈; la IA repara gratis junto a los
+      suyos — su coste es no estar luchando)*
 - [x] Al morir una nave, se pierde de verdad: hay que construir otra. *(v0.6: también
       tu propia nave; caza de emergencia si el hangar está vacío)*
-- [ ] Recursos por planeta: además de créditos, cada planeta da mineral o
-      combustible según su tipo (visual: paleta del planeta). Los escudos se
-      recargan con mineral.
+- [x] Recursos por planeta: ⛏ mineral (produce ⛏, alimenta la recarga de escudos),
+      ⛽ gas (repostaje ×2), ◈ créditos (×1; los demás ×0,5). *(v1.1 — simplificación:
+      el mineral es un stock global del jugador, no por planeta)*
 - [x] Diplomacia más lenta: guerras se declaran, no pasan por un malentendido de 3
-      disparos. Los bots no disparan salvo guerra declarada. *(v0.6: daño
-      simétrico con memoria persistente. **v0.8: hecho del todo** — neutralidad
-      total por defecto, guerras declaradas por estrategia (poder ×1.6), wingmen
-      solo atacan en guerra o si tú provocas primero; la paz es segura)*
+      disparos. Los bots no disparan salvo guerra declarada. *(v0.6: daño simétrico.
+      **v0.8**: neutralidad total + guerras estratégicas + disciplina de wingmen.
+      **v1.2**: la guerra declarada ya NO decae sola — hay que pagar tributo)*
 
 ### Fase F — UI estratégica
 - [x] Panel de imperio (tecla TAB o icono 🏛️): resumen (planetas, ◈/s, flota,
@@ -136,6 +138,17 @@ Control estilo Age of Empires de las naves desplegadas. Diseño completo en el v
       adelante — p. ej. nuevos pasos del tutorial guiado enseñando SHIFT+arrastre
       y el menú de botón derecho).
 - Subsume el ítem «órdenes con clic derecho» de la Fase F.
+
+### Fase E completa + victoria real (v1.1/v1.2, implementadas 2026-09-11)
+- [x] **HP alto** (10-20 impactos) y **reparación con coste** junto a planetas
+      propios; **recursos por tipo de planeta** (⛏/⛽/◈) con icono en el nombre;
+      escudos que se recargan consumiendo mineral (¡el README lo prometía desde
+      v0.4 y no existía!).
+- [x] **Victoria y derrota reales**: una facción CAE cuando se queda sin planetas,
+      naves ni construcción (la construcción muere con la capital). Sin facciones
+      IA vivas → banner 🏆 VICTORIA (la partida sigue en modo libre). Si TÚ te
+      quedas sin planetas → banner 💀 de imperio caído hasta que reconquistes.
+      La guerra declarada ya no decae sola. E2E: **112 checks verdes**.
 
 ### Fase D+F — Niebla de guerra y panel de imperio (v0.9, implementada 2026-09-11)
 - [x] **Niebla de guerra**: rejilla de 200 u (1600 celdas). Ves 600 u desde tus
