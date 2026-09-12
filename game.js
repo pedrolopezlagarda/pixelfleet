@@ -61,6 +61,8 @@ const player = {
   mineral: 40,              // v1.1: recurso para regenerar escudos de tus planetas
   invuln: 2, respawnT: 0, shootCd: 0,
   upgrades: { motor: 0, cadencia: 0, blindaje: 0, deposito: 0 },
+  tech: {},                   // v1.4: tecnologías de nivel 2 (excluyentes por rama)
+  deflCd: 0,                  // v1.4: cooldown del escudo deflector
   ship: 'caza',                 // modelo actual (catálogo SHIPS, v0.6)
 };
 
@@ -429,11 +431,12 @@ function facShipThink(b, dt) {
 /* ---------- proyectiles y partículas ---------- */
 const projectiles = [];
 const particles = [];
-function shoot(x, y, angle, color, owner) {
+function shoot(x, y, angle, color, owner, dmg) {
   projectiles.push({
     x, y,
     vx: Math.cos(angle) * 200, vy: Math.sin(angle) * 200,   // v1.0: proyectiles más lentos
     color, owner, life: 1.8,
+    dmg: dmg || 1,   // v1.4: daño por arma (bláster pesado = 2)
   });
 }
 function explode(x, y, color) {
@@ -553,6 +556,13 @@ const PLANET_INCOME = 1;       // créditos/s por planeta propio
 
 function damageShip(ship, dmg, killer) {
   if (ship === player && player.invuln > 0) return;
+  // v1.4: el escudo deflector bloquea un impacto cada 20 s
+  if (ship === player && player.tech.deflector && (player.deflCd || 0) <= 0) {
+    player.deflCd = 20;
+    chatSys('🛡️ El escudo deflector ha bloqueado el impacto.');
+    particles.push({ x: player.x, y: player.y, vx: 0, vy: 0, life: 0.4, color: '#7ef9ff' });
+    return;
+  }
   ship.hp -= dmg;
   ship.flash = 0.15;
   // diplomacia: que te disparen empeora la relación con esa facción
@@ -644,7 +654,10 @@ function update(dt) {
   /* --- jugador --- */
   if (player.alive) {
     const boosting = keys[' '] && player.fuel > 0;
-    const accel = 45 * getShipMod().accel * (1 + 0.15 * player.upgrades.motor) * (boosting ? 2.2 : 1);   // v1.0: velocidades ÷3
+    // v1.4: hipermotor (impulso ×3,2) / crucero (+35 % sin impulso)
+    const boostMul = player.tech.hipermotor ? 3.2 : 2.2;
+    const accel = 45 * getShipMod().accel * (1 + 0.15 * player.upgrades.motor) *
+                  (boosting ? boostMul : (player.tech.crucero ? 1.35 : 1));   // v1.0: velocidades ÷3
     let ax = 0, ay = 0;
     if (keys['w'] || keys['arrowup'])    ay -= 1;
     if (keys['s'] || keys['arrowdown'])  ay += 1;
@@ -666,15 +679,17 @@ function update(dt) {
     // disparar (v0.7: con naves seleccionadas el clic da órdenes, no dispara)
     player.shootCd -= dt;
     if (mouse.down && player.shootCd <= 0 && !selection.size) {
-      shoot(player.x + Math.cos(player.angle) * 8, player.y + Math.sin(player.angle) * 8, player.angle, player.color, player);
-      player.shootCd = 0.22 * getShipMod().rof / (1 + 0.25 * player.upgrades.cadencia);
+      shoot(player.x + Math.cos(player.angle) * 8, player.y + Math.sin(player.angle) * 8, player.angle, player.color, player,
+            player.tech.blaster ? 2 : 1);   // v1.4: bláster pesado
+      // v1.4: enjambre (+60 % cadencia) o bláster pesado (-25 % cadencia)
+      player.shootCd = 0.22 * getShipMod().rof * (player.tech.enjambre ? 1 / 1.6 : 1) * (player.tech.blaster ? 1 / 0.75 : 1) / (1 + 0.25 * player.upgrades.cadencia);
       net.sendShoot();
     }
 
     // combustible (v1.0: solo se reposta junto a planetas — propios rápido,
     // aliados medio, neutros lento; en mitad del espacio NADA.
     // v1.1: los planetas de ⛽ gas repostan al DOBLE)
-    if (boosting) player.fuel = Math.max(0, player.fuel - 40 * dt);   // impulso: cortos y caros
+    if (boosting) player.fuel = Math.max(0, player.fuel - (player.tech.hipermotor ? 30 : 40) * dt);   // impulso: cortos y caros (v1.4: hipermotor -25 %)
     else {
       let regen = 0;
       for (const p of planets) {
@@ -700,6 +715,7 @@ function update(dt) {
       } else player.repairT = 0;
     }
     player.invuln = Math.max(0, player.invuln - dt);
+    player.deflCd = Math.max(0, (player.deflCd || 0) - dt);   // v1.4: escudo deflector
     player.flash = Math.max(0, (player.flash || 0) - dt);
   } else {
     player.respawnT -= dt;
@@ -755,24 +771,29 @@ function update(dt) {
     if (!dead) {
       // colisión con jugador (v0.5.2: sin fuego amigo — tu color no te daña)
       if (pr.owner !== player && pr.color !== player.color && player.alive && dist2(pr.x, pr.y, player.x, player.y) < 64) {
-        damageShip(player, 1, pr.owner); dead = true;
+        damageShip(player, pr.dmg || 1, pr.owner); dead = true;
       }
       // colisión con bots (mismo color = misma facción = inmune)
       if (!dead) for (const b of bots) {
         if (b === pr.owner || !b.alive || b.color === pr.color) continue;
-        if (dist2(pr.x, pr.y, b.x, b.y) < 49) { damageShip(b, 1, pr.owner); dead = true; break; }
+        if (dist2(pr.x, pr.y, b.x, b.y) < 49) { damageShip(b, pr.dmg || 1, pr.owner); dead = true; break; }
       }
       // minería: los proyectiles dañan asteroides
       if (!dead) for (const a of asteroids) {
         if (!a.alive) continue;
         if (dist2(pr.x, pr.y, a.x, a.y) < (a.r + 2) ** 2) {
-          a.hp--; dead = true;
+          a.hp -= pr.dmg || 1; dead = true;
           if (a.hp <= 0) {
             a.alive = false; a.respawnT = rnd(20, 40);
             explode(a.x, a.y, '#a0aec0');
             const vein = richVein && dist2(a.x, a.y, richVein.x, richVein.y) < 400 * 400 ? 2 : 1;   // v1.3: veta rica
+            const mineGain = (3 + (player.tech.extractor ? 1 : 0)) * vein;   // v1.4: extractor +1◈
             if (pr.owner === player) {
-              player.credits += 3 * vein;   // v1.0: los asteroides ya NO dan combustible (se reposta en planetas)
+              player.credits += mineGain;   // v1.0: los asteroides ya NO dan combustible (se reposta en planetas)
+              if (typeof onAsteroidMined === 'function') onAsteroidMined();   // FIX v1.4: los contratos de minería no contaban
+            } else if (pr.owner && pr.owner.built) {
+              player.credits += mineGain;   // v1.4: la minería de tus wingmen también es tuya
+              if (typeof onAsteroidMined === 'function') onAsteroidMined();
             } else if (pr.owner && pr.owner.imp && facState[pr.owner.color]) {
               facState[pr.owner.color].credits += 3 * vein;   // v0.8: la IA mina para su facción
             }
@@ -792,7 +813,7 @@ function update(dt) {
             particles.push({ x: pr.x, y: pr.y, vx: rnd(-50, 50), vy: rnd(-50, 50), life: 0.25, color: '#8aff80' });
             dead = true; break;
           }
-          p.shield--;
+          p.shield -= pr.dmg || 1;   // v1.4: el bláster pesado desgasta más escudo
           // v0.8: dañar el escudo de una facción cuenta como provocación tuya
           if (pr.owner === player || (pr.owner && pr.owner.built)) playerAggro[p.owner] = 45;
           particles.push({ x: pr.x, y: pr.y, vx: rnd(-50, 50), vy: rnd(-50, 50), life: 0.25, color: p.owner });
@@ -860,7 +881,7 @@ function update(dt) {
   let income = 0;
   for (const p of planets) if (p.owner === player.color) {
     income += p === playerCapital ? PLANET_INCOME * 3 : (p.res === 'creditos' ? PLANET_INCOME : PLANET_INCOME * 0.5);
-    if (p.res === 'mineral') player.mineral += 0.4 * dt;
+    if (p.res === 'mineral') player.mineral += 0.4 * (player.tech.extractor ? 1.5 : 1) * dt;   // v1.4: extractor +50 %
   }
   player.credits += income * dt;
 
@@ -1387,6 +1408,7 @@ function newGameInit() {
   if (eb) eb.classList.add('hidden');
   // v0.6: partida nueva — 1 caza (tu nave), hangar vacío, fondos iniciales
   player.ship = 'caza';
+  player.tech = {}; player.deflCd = 0;   // v1.4
   hangarShips.length = 0;
   buildQueue.length = 0;
   applyUpgrades();
@@ -1494,6 +1516,35 @@ const SHOP_ITEMS = [
 ];
 const MAX_UPG = 5;
 const upgCost = it => Math.floor(it.base * (player.upgrades[it.key] + 1) * 1.4);
+
+/* ---------- v1.4: árbol de tecnología (nivel 2, excluyente por rama) ---------- */
+const TECH_TREE = [
+  { key: 'hipermotor', name: 'Hipermotor',       req: 'motor',    rival: 'crucero',    cost: 400, desc: 'Impulso ×3,2 y -25 % de consumo' },
+  { key: 'crucero',    name: 'Motor crucero',    req: 'motor',    rival: 'hipermotor', cost: 400, desc: '+35 % de velocidad sin impulso' },
+  { key: 'blaster',    name: 'Bláster pesado',   req: 'cadencia', rival: 'enjambre',   cost: 400, desc: 'Daño ×2, cadencia -25 %' },
+  { key: 'enjambre',   name: 'Enjambre',         req: 'cadencia', rival: 'blaster',    cost: 400, desc: 'Cadencia de fuego +60 %' },
+  { key: 'deflector',  name: 'Escudo deflector', req: 'blindaje', rival: 'casco',      cost: 400, desc: 'Bloquea 1 impacto cada 20 s' },
+  { key: 'casco',      name: 'Casco reforzado',  req: 'blindaje', rival: 'deflector',  cost: 400, desc: '+8 HP' },
+  { key: 'extractor',  name: 'Extractor',        req: 'deposito', rival: 'hangarplus', cost: 400, desc: 'Minería +1◈ y mineral +50 %' },
+  { key: 'hangarplus', name: 'Hangar ampliado',  req: 'deposito', rival: 'extractor',  cost: 400, desc: '+2 flota máx. y +4 hangar' },
+];
+function techState(t) {
+  if (player.tech[t.key]) return 'done';
+  if (player.tech[t.rival]) return 'blocked';          // la rama rival ya fue elegida
+  if (player.upgrades[t.req] < 3) return 'locked';     // requiere la mejora base a nv.3
+  return 'open';
+}
+function buyTech(key) {
+  const t = TECH_TREE.find(x => x.key === key);
+  if (!t || techState(t) !== 'open') return;
+  if (player.credits < t.cost) { chatSys('◈ Créditos insuficientes.'); return; }
+  player.credits -= t.cost;
+  player.tech[t.key] = true;
+  applyUpgrades();
+  chatSys('🔬 Tecnología investigada: ' + t.name + '.');
+  saveGame();
+  renderShop();
+}
 function applyUpgrades() {
   player.maxHp   = 12 + 2 * player.upgrades.blindaje;   // v1.1: HP alto
   player.maxFuel = 100 + 25 * player.upgrades.deposito;
@@ -1537,6 +1588,7 @@ function saveGame() {
         hp: player.hp, fuel: player.fuel,
         credits: Math.floor(player.credits), mineral: Math.floor(player.mineral), kills: player.kills, deaths: player.deaths,
         upgrades: player.upgrades, ship: player.ship,
+        tech: player.tech,   // v1.4
       },
       capitalIdx: planets.indexOf(playerCapital),
       prepT: Math.max(0, prepT),
@@ -1581,6 +1633,7 @@ function applySave(d) {
   player.kills = d.player.kills || 0;
   player.deaths = d.player.deaths || 0;
   Object.assign(player.upgrades, d.player.upgrades || {});
+  player.tech = d.player.tech || {};   // v1.4
   player.ship = d.player.ship || 'caza';
   // mundo: reset dinámico sobre el universo determinista
   for (const p of planets) {
@@ -1705,6 +1758,19 @@ function renderShop() {
     </div>`;
   }).join('');
   shopEl.querySelectorAll('button[data-key]').forEach(b => b.onclick = () => buyUpgrade(b.dataset.key));
+  // v1.4: árbol de tecnología (nivel 2, excluyente por rama)
+  document.getElementById('shop-tech').innerHTML = TECH_TREE.map(t => {
+    const st = techState(t);
+    const note = st === 'done' ? '✔ investigada'
+      : st === 'blocked' ? '✖ rama rival'
+      : st === 'locked' ? 'req. ' + t.req + ' nv.3'
+      : t.cost + '◈';
+    return `<div class="shop-item${st !== 'open' ? ' maxed' : ''}">
+      <div class="info"><b>${t.name}</b><span>${t.desc}</span></div>
+      <button data-tech="${t.key}" ${st !== 'open' || player.credits < t.cost ? 'disabled' : ''}>${note}</button>
+    </div>`;
+  }).join('');
+  shopEl.querySelectorAll('button[data-tech]').forEach(b => b.onclick = () => buyTech(b.dataset.tech));
 }
 function renderDiplo() {
   document.getElementById('diplo-list').innerHTML = FACTION_COLORS
@@ -1764,6 +1830,10 @@ update = function (dt) {
       b.disabled = lvl >= MAX_UPG || player.credits < upgCost(it);
       b.textContent = lvl >= MAX_UPG ? 'MAX' : upgCost(it) + '◈';
     });
+    shopEl.querySelectorAll('button[data-tech]').forEach(b => {   // v1.4
+      const t = TECH_TREE.find(x => x.key === b.dataset.tech);
+      b.disabled = techState(t) !== 'open' || player.credits < t.cost;
+    });
   }
 };
 const _draw = draw;
@@ -1801,7 +1871,7 @@ const _applyUpg = applyUpgrades;
 applyUpgrades = function () {
   _applyUpg();
   const m = getShipMod();
-  player.maxHp   = 12 + 2 * player.upgrades.blindaje + m.hp;   // v1.1
+  player.maxHp   = 12 + 2 * player.upgrades.blindaje + m.hp + (player.tech.casco ? 8 : 0);   // v1.1/v1.4
   player.maxFuel = (100 + 25 * player.upgrades.deposito) * m.fuel;
   player.hp   = Math.min(player.hp, player.maxHp);
   player.fuel = Math.min(player.fuel, player.maxFuel);
@@ -1955,12 +2025,12 @@ function refreshHangar() {
     : '';
   $('hangar-qstat').textContent = q;
   $('hangar-fstat').textContent = fleetCount() + '/' + fleetMax();
-  $('hangar-hstat').textContent = hangarShips.length + '/' + HANGAR_MAX;
+  $('hangar-hstat').textContent = hangarShips.length + '/' + hangarMax();
   $('hangar-where').textContent = nearCapital() ? '' : ' · ⚠ solo junto a tu capital';
   const near = nearCapital();
   hangarEl.querySelectorAll('button[data-build]').forEach(btn => {
     const s = shipDef(btn.dataset.build);
-    btn.disabled = !near || player.credits < s.cost || hangarShips.length + buildQueue.length >= HANGAR_MAX;
+    btn.disabled = !near || player.credits < s.cost || hangarShips.length + buildQueue.length >= hangarMax();
   });
   hangarEl.querySelectorAll('button[data-hact]').forEach(btn => {
     btn.disabled = btn.dataset.hact === 'pilot' ? !near : (!near || fleetCount() >= fleetMax());
@@ -2076,8 +2146,9 @@ function drawJoystick() {
    a esa nave. Si caen, se pierden de verdad (built/gone).
    ========================================================= */
 const HANGAR_MAX = 10;
+function hangarMax() { return HANGAR_MAX + (player.tech.hangarplus ? 4 : 0); }   // v1.4
 // la flota activa escala con tu imperio: 2 + 1 por planeta propio
-function fleetMax() { return 2 + planets.filter(p => p.owner === player.color).length; }
+function fleetMax() { return 2 + planets.filter(p => p.owner === player.color).length + (player.tech.hangarplus ? 2 : 0); }   // v1.4: hangar ampliado
 let hangarShips = [];      // ids de SHIPS guardados en la capital
 const buildQueue = [];     // {type, t} — segundos restantes del primero
 let wingUid = 0;
@@ -2090,7 +2161,7 @@ function queueShip(type) {
   const s = shipDef(type);
   if (!playerCapital) return;
   if (!nearCapital()) { chatSys('🏗️ Debes estar junto a tu capital para construir.'); return; }
-  if (hangarShips.length + buildQueue.length >= HANGAR_MAX) { chatSys('🏗️ Hangar lleno (' + HANGAR_MAX + ' naves).'); return; }
+  if (hangarShips.length + buildQueue.length >= hangarMax()) { chatSys('🏗️ Hangar lleno (' + hangarMax() + ' naves).'); return; }
   if (player.credits < s.cost) { chatSys('◈ Necesitas ' + s.cost + '◈ para construir un ' + s.name + '.'); return; }
   player.credits -= s.cost;
   buildQueue.push({ type, t: s.buildTime });
@@ -2103,7 +2174,7 @@ function buildUpdate(dt) {
   if (buildQueue[0].t > 0) return;
   const item = buildQueue.shift();
   hangarShips.push(item.type);   // la nave va AL HANGAR: la despliegas tú
-  chatSys('🛰️ ' + shipDef(item.type).name + ' construido y en el hangar (' + hangarShips.length + '/' + HANGAR_MAX + ')');
+  chatSys('🛰️ ' + shipDef(item.type).name + ' construido y en el hangar (' + hangarShips.length + '/' + hangarMax() + ')');
   // evento discreto: si el hangar está abierto, se re-renderiza (regla v0.5.3b)
   if (typeof hangarEl !== 'undefined' && !hangarEl.classList.contains('hidden')) renderHangar();
 }
@@ -2142,7 +2213,7 @@ function recallShip(uid) {
   const i = bots.findIndex(b => b.uid === uid && b.built);
   if (i < 0) return;
   const b = bots[i];
-  if (hangarShips.length >= HANGAR_MAX) { chatSys('🏗️ Hangar lleno: no cabe ' + b.name + '.'); return; }
+  if (hangarShips.length >= hangarMax()) { chatSys('🏗️ Hangar lleno: no cabe ' + b.name + '.'); return; }
   bots.splice(i, 1);
   selection.delete(b.uid);   // v0.7: si estaba seleccionada, deja de estarlo
   hangarShips.push(b.shipType);

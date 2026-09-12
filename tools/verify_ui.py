@@ -88,6 +88,35 @@ with sync_playwright() as pw:
     check(credits1 < credits0, f'comprar Motor descuenta créditos ({credits0} → {credits1})')
     check(page.evaluate("player.upgrades.motor") == 1, 'mejora Motor nv.1 aplicada')
 
+    # ===== 2b. v1.4: árbol de tecnología =====
+    print('— tecnología: ramas excluyentes —')
+    page.evaluate("player.credits += 3000")
+    page.click('#shop-items button[data-key="motor"]')
+    page.wait_for_timeout(250)
+    page.click('#shop-items button[data-key="motor"]')
+    page.wait_for_timeout(250)
+    check(page.evaluate("player.upgrades.motor") == 3, 'Motor a nv.3 (requisito de rama)')
+    check(page.locator('button[data-tech="hipermotor"]').is_enabled()
+          and page.locator('button[data-tech="crucero"]').is_enabled(),
+          'con motor nv.3 la rama de propulsión se desbloquea')
+    check(page.locator('button[data-tech="blaster"]').is_disabled(), 'sin cadencia nv.3 el bláster sigue bloqueado')
+    page.click('button[data-tech="hipermotor"]')
+    page.wait_for_timeout(300)
+    check(page.evaluate("!!player.tech.hipermotor"), 'Hipermotor investigado')
+    check(page.locator('button[data-tech="crucero"]').is_disabled()
+          and '✖' in page.locator('button[data-tech="crucero"]').inner_text(),
+          'la rama rival (crucero) queda bloqueada para siempre')
+    page.click('#shop-items button[data-key="cadencia"]')
+    page.wait_for_timeout(200)
+    page.click('#shop-items button[data-key="cadencia"]')
+    page.wait_for_timeout(200)
+    page.click('#shop-items button[data-key="cadencia"]')
+    page.wait_for_timeout(200)
+    page.click('button[data-tech="blaster"]')
+    page.wait_for_timeout(300)
+    check(page.evaluate("!!player.tech.blaster"), 'Bláster pesado investigado')
+    page.keyboard.press('Escape')
+
     # ===== 3. diplomacia =====
     print('— diplomacia: tributo y guerra —')
     page.evaluate("player.credits += 150")
@@ -116,6 +145,32 @@ with sync_playwright() as pw:
     page.wait_for_timeout(300)
     check(page.evaluate("contracts.active.length") == 1, 'contrato aceptado pasa a activos')
     check('▶' in page.locator('#contract-active').inner_text(), 'contrato activo visible en el panel')
+
+    # FIX v1.4: la minería suma en los contratos (+ el bláster hace daño ×2)
+    page.keyboard.press('Escape')
+    page.wait_for_timeout(200)
+    page.evaluate("contracts.active.push({ id: 999, type: 'mineria', faction: null, target: 2, progress: 0, reward: 16, title: 'Minería', desc: 'test' })")
+    page.evaluate("""(() => {
+      const a = asteroids.find(x => x.alive);
+      window.__ast = a;
+      player.x = a.x + 100; player.y = a.y; player.vx = player.vy = 0;
+      cam.x = player.x; cam.y = player.y;   // teletransporte: mover también la cámara
+    })()""")
+    page.wait_for_timeout(400)   # la cámara sigue al jugador
+    astpos = page.evaluate("({ x: 2*((window.__ast.x - cam.x)*cam.zoom + VW/2), y: 2*((window.__ast.y - cam.y)*cam.zoom + VH/2) })")
+    page.mouse.move(astpos['x'], astpos['y'])   # apuntar con el ratón (el ángulo sigue al cursor)
+    page.mouse.down()
+    page.wait_for_timeout(700)
+    page.mouse.up()
+    check(page.evaluate("projectiles.some(pr => pr.owner === player && pr.dmg === 2) || !window.__ast.alive"),
+          'el bláster dispara proyectiles de daño ×2')
+    page.wait_for_timeout(900)
+    check(page.evaluate("!window.__ast.alive"), 'asteroide de 2 HP destruido de UN hit con bláster')
+    check(page.evaluate("(contracts.active.find(c => c.id === 999) || { progress: -1 }).progress") >= 1,
+          'FIX: destruir asteroides SUMA en el contrato de minería')
+    # volver a la capital (las construcciones de hangar la requieren)
+    page.evaluate("player.x = playerCapital.x + playerCapital.r + 10; player.y = playerCapital.y; player.vx = player.vy = 0; cam.x = player.x; cam.y = player.y;")
+    page.wait_for_timeout(300)
 
     # ===== 5. hangar y flota =====
     print('— hangar: construir → hangar → desplegar —')

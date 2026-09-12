@@ -1,4 +1,4 @@
-# 🚀 PIXEL FLEET — v1.3
+# 🚀 PIXEL FLEET — v1.4
 
 Juego de **estrategia espacial** vista cenital, pixel-art, multijugador.
 **Todas las facciones empiezan de cero**: su planeta capital y **una sola nave**,
@@ -179,6 +179,19 @@ chat). Tributo 100◈ (+40), guerra manual, deriva pacífica lenta.
 - Conquistar: **+10 ◈**. Cada planeta propio: **+1 ◈/s** (la capital ×3). Zonas enemigas
   contestan la captura.
 
+### 🔬 Árbol de tecnología (v1.4)
+En la tienda (B), debajo de las mejoras base: cuando una mejora llega a **nivel 3**
+se desbloquea su rama de tecnología — y solo puedes elegir **una de las dos**:
+- **Propulsión**: Hipermotor (impulso ×3,2 y -25 % consumo) *o* Motor crucero
+  (+35 % sin impulso).
+- **Armas**: Bláster pesado (daño ×2, cadencia -25 %) *o* Enjambre (+60 % cadencia).
+- **Defensa**: Escudo deflector (bloquea 1 impacto cada 20 s) *o* Casco reforzado
+  (+8 HP).
+- **Logística**: Extractor (minería +1◈ y ⛏ +50 %) *o* Hangar ampliado (+2 flota,
+  +4 hangar).
+
+Cuestan 400◈ y son permanentes (se guardan en la partida).
+
 ### 🎭 Personalidades y eventos galácticos (v1.3)
 - **Cada facción IA tiene carácter** (se descubre al contactar con ella, en el
   panel de imperio o diplomacia): ⚔️ **conquistadora** (declara guerras con poca
@@ -214,9 +227,10 @@ chat). Tributo 100◈ (+40), guerra manual, deriva pacífica lenta.
 - **Asteroides**: 22 campos de rocas, **+3 ◈** por asteroide, reaparición 20-40 s.
 
 ### 🔧 Tienda (B)
-Motor +15% vel · Cadencia +25% fuego · Blindaje +1 HP · Depósito +25 combustible.
+Motor +15% vel · Cadencia +25% fuego · Blindaje +2 HP · Depósito +25 combustible.
 5 niveles por mejora, precio escalado ×1.4. Las mejoras son del piloto: se aplican
-a cualquier nave que pilotes.
+a cualquier nave que pilotes. Al llegar a nv.3 se desbloquea la **tecnología de la
+rama** (ver arriba). La minería de tus **wingmen** también te da ◈ (v1.4).
 
 ### 📋 Contratos (C)
 Hasta **2 contratos activos**: Caza (destruye naves, de una facción o cualquiera), Minería
@@ -248,7 +262,7 @@ Posiciones a 10 Hz, disparos y chat retransmitidos **por sala**.
 | `style.css` | Estilo retro pixelado |
 | `game.js` | Motor completo + sistemas v0.3/v0.4/v0.5/v0.6 |
 | `server.js` | Servidor WebSocket multijugador con salas |
-| `tools/verify_ui.py` | Test E2E real (Playwright): 121 checks — menús, clics, flota, RTS, facciones IA, niebla, economía, eventos, victoria, persistencia, zoom |
+| `tools/verify_ui.py` | Test E2E real (Playwright): 130 checks — menús, clics, tienda/tecnología, flota, RTS, facciones IA, niebla, economía, eventos, victoria, persistencia, zoom |
 | `README.md` | Este documento |
 
 ### Tests E2E
@@ -268,7 +282,7 @@ espaciales comerciales · mapas con agujeros de gusano.
 
 ---
 
-*v1.3 · personalidades de facción y eventos galácticos · victoria real · economía estratégica · niebla de guerra · control RTS*
+*v1.4 · árbol de tecnología (ramas excluyentes) · personalidades y eventos · victoria real · economía estratégica · niebla de guerra*
 
 > ⚠️ El save v1.0 (`pixelfleet_save_v2`) no es compatible con partidas de versiones
 > anteriores (el mundo cambia de tamaño): al entrar empezarás una partida nueva.

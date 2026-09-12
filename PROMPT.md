@@ -188,6 +188,19 @@ atacan a nadie salvo que tú empieces o haya guerra». Nota del vault:
 - [x] Save v2 ampliado: estado de facciones (economía, relaciones, construcción),
       capitales de facción y provocaciones. E2E: **84 checks verdes**.
 
+## POST-ROADMAP (v1.3+)
+El roadmap v0.5 quedó completo en v1.2 (A-F + G/H). Nuevas líneas:
+- [x] **v1.3 — Personalidades de facción + eventos galácticos** (piratas, veta
+      rica, agujeros de gusano). Vault: `PixelFleet - Personalidades y eventos (v1.3)`.
+- [x] **v1.4 — Árbol de tecnología**: con una mejora base a nv.3 se desbloquea su
+      rama (400◈) y solo puedes elegir UNA de dos: propulsión (hipermotor/crucero),
+      armas (bláster ×2/enjambre), defensa (deflector/casco +8 HP) y logística
+      (extractor/hangar ampliado). Persistente en el save.
+- [x] **FIX v1.4: los contratos de minería no contaban** (`onAsteroidMined` nunca
+      se llamaba). Además, la minería de los wingmen ahora también da ◈ al jugador.
+- [ ] **Asedios con defensas orbitales** y **misiones-historia** (siguientes,
+      pedido de Pedro).
+
 ## RESTRICCIONES TÉCNICAS
 - Vanilla JS + canvas, mismo estilo pixel-art. Nada de frameworks pesados.
 - Mantener el sistema de guardado en localStorage (ampliarlo con las nuevas cosas).
