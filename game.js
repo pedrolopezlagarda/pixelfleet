@@ -6,7 +6,7 @@
    Multijugador simulado localmente + servidor WS preparado.
    ========================================================= */
 
-const WORLD = { w: 8000, h: 8000 };
+const WORLD = { w: 12000, h: 12000 };   // v1.0: mundo grande — cruzarlo es una decisión de partida
 const canvas = document.getElementById('canvas');
 const ctx = canvas.getContext('2d');
 ctx.imageSmoothingEnabled = false;
@@ -125,7 +125,7 @@ const rngWorld = mulberry32(1234567);
 const rndW  = (a, b) => a + rngWorld() * (b - a);
 const rndiW = (a, b) => Math.floor(rndW(a, b + 1));
 const planets = [];
-for (let i = 0; i < 48; i++) {
+for (let i = 0; i < 64; i++) {   // v1.0: 64 planetas (el mundo creció a 12000×12000)
   const r = rndiW(24, 70);
   planets.push({
     x: rndW(r * 2, WORLD.w - r * 2),
@@ -188,7 +188,7 @@ function spawnFactionShip(color) {
     color,
     x: clamp(home.x + rnd(-200, 200), 20, WORLD.w - 20),
     y: clamp(home.y + rnd(-200, 200), 20, WORLD.h - 20),
-    angle: rnd(0, TAU), speed: rnd(18, 42),
+    angle: rnd(0, TAU), speed: rnd(9, 20),   // v1.0: naves imperiales lentas (ritmo ÷3)
     waypoint: null, hp: 3, alive: true, respawnT: 0,
     shootCd: rnd(0.5, 2), credits: 0, kills: 0,
     vx: 0, vy: 0, flash: 0,
@@ -393,8 +393,8 @@ const particles = [];
 function shoot(x, y, angle, color, owner) {
   projectiles.push({
     x, y,
-    vx: Math.cos(angle) * 300, vy: Math.sin(angle) * 300,   // v0.5.2: proyectiles más lentos
-    color, owner, life: 1.4,
+    vx: Math.cos(angle) * 200, vy: Math.sin(angle) * 200,   // v1.0: proyectiles más lentos
+    color, owner, life: 1.8,
   });
 }
 function explode(x, y, color) {
@@ -605,7 +605,7 @@ function update(dt) {
   /* --- jugador --- */
   if (player.alive) {
     const boosting = keys[' '] && player.fuel > 0;
-    const accel = 130 * getShipMod().accel * (1 + 0.15 * player.upgrades.motor) * (boosting ? 2.2 : 1);   // v0.5.2: ritmo más pausado
+    const accel = 45 * getShipMod().accel * (1 + 0.15 * player.upgrades.motor) * (boosting ? 2.2 : 1);   // v1.0: velocidades ÷3
     let ax = 0, ay = 0;
     if (keys['w'] || keys['arrowup'])    ay -= 1;
     if (keys['s'] || keys['arrowdown'])  ay += 1;
@@ -632,14 +632,18 @@ function update(dt) {
       net.sendShoot();
     }
 
-    // combustible
-    if (boosting) player.fuel = Math.max(0, player.fuel - 22 * dt);
+    // combustible (v1.0: solo se reposta junto a planetas — propios rápido,
+    // aliados medio, neutros lento; en mitad del espacio NADA)
+    if (boosting) player.fuel = Math.max(0, player.fuel - 40 * dt);   // impulso: cortos y caros
     else {
-      let regen = 6;
+      let regen = 0;
       for (const p of planets) {
-        if (p.owner === player.color && dist2(p.x, p.y, player.x, player.y) < (p.r + 60) ** 2) { regen = 30; break; }
+        if (dist2(p.x, p.y, player.x, player.y) >= (p.r + 60) ** 2) continue;
+        if (p.owner === player.color) { regen = 30; break; }
+        if (p.owner && (standings[p.owner] || 0) >= 20) regen = Math.max(regen, 12);   // facción aliada
+        else if (!p.owner) regen = Math.max(regen, 8);                                 // planeta neutral
       }
-      player.fuel = Math.min(player.maxFuel, player.fuel + regen * dt);
+      if (regen) player.fuel = Math.min(player.maxFuel, player.fuel + regen * dt);
     }
     player.invuln = Math.max(0, player.invuln - dt);
     player.flash = Math.max(0, (player.flash || 0) - dt);
@@ -710,7 +714,7 @@ function update(dt) {
             a.alive = false; a.respawnT = rnd(20, 40);
             explode(a.x, a.y, '#a0aec0');
             if (pr.owner === player) {
-              player.credits += 3; player.fuel = Math.min(player.maxFuel, player.fuel + 8);
+              player.credits += 3;   // v1.0: los asteroides ya NO dan combustible (se reposta en planetas)
             } else if (pr.owner && pr.owner.imp && facState[pr.owner.color]) {
               facState[pr.owner.color].credits += 3;   // v0.8: la IA mina para su facción
             }
@@ -1335,7 +1339,7 @@ function makeAsteroid(r, rng) {
 const asteroids = [];
 {
   const ra = mulberry32(777001);
-  for (let i = 0; i < 14; i++) {              // 14 campos de asteroides
+  for (let i = 0; i < 22; i++) {              // 22 campos de asteroides (mundo 12000, v1.0)
     const cx = ra() * WORLD.w, cy = ra() * WORLD.h;
     for (let j = 0; j < 7; j++) {
       const r = 4 + ra() * 6;
@@ -1418,7 +1422,8 @@ function readSave() {
   try {
     const d = JSON.parse(localStorage.getItem(SAVE_KEY) || 'null');
     // v0.8: los saves anteriores (240 pilotos, sin facciones imperio) no son compatibles
-    if (d && !d.factions) { localStorage.removeItem(SAVE_KEY); return null; }
+    // v1.0: tampoco los de otro tamaño de mundo (8000 → 12000)
+    if (d && (!d.factions || d.world !== WORLD.w)) { localStorage.removeItem(SAVE_KEY); return null; }
     return d;
   } catch (e) { return null; }
 }
@@ -1427,6 +1432,7 @@ function saveGame() {
   try {
     localStorage.setItem(SAVE_KEY, JSON.stringify({
       v: 2,
+      world: WORLD.w,   // v1.0: si el mundo cambia de tamaño, el save queda inválido
       player: {
         name: player.name, color: player.color,
         x: player.x, y: player.y, angle: player.angle,
@@ -1528,7 +1534,7 @@ function applySave(d) {
     const b = {
       name: sb.name, color: sb.color,
       x: clamp(sb.x, 20, WORLD.w - 20), y: clamp(sb.y, 20, WORLD.h - 20),
-      angle: rnd(0, TAU), speed: rnd(18, 42), waypoint: null,
+      angle: rnd(0, TAU), speed: rnd(9, 20), waypoint: null,   // v1.0
       hp: sb.hp, alive: sb.alive !== false, respawnT: 0,
       shootCd: rnd(0.5, 2), credits: sb.credits || 0, kills: sb.kills || 0,
       vx: 0, vy: 0, flash: 0,
@@ -2114,7 +2120,7 @@ function wingmanUpdate(b, dt) {
   const wa = Math.atan2(ty - b.y, tx - b.x);
   b.angle = angleLerp(b.angle, wa, 1 - Math.pow(0.05, dt));
   if (dd > 30) {
-    const sp = 60 * mod.accel * clamp(dd / 80, 0.5, 2.5);   // acelera para alcanzar el objetivo
+    const sp = 34 * mod.accel * clamp(dd / 80, 0.5, 2.5);   // v1.0: wingmen acordes al ritmo ÷3
     b.x = clamp(b.x + Math.cos(b.angle) * sp * dt, 20, WORLD.w - 20);
     b.y = clamp(b.y + Math.sin(b.angle) * sp * dt, 20, WORLD.h - 20);
   }

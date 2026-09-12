@@ -66,13 +66,18 @@ los 10 segundos.
       en ajustes. **Diplomacia simétrica**: dañar en paz cabrea a la facción (y el
       daño de tus wingmen cuenta como tuyo). E2E reescrito: **54 checks** en verde.
 
-### Fase C — Ritmo y distancias
-- [ ] Reducir todas las velocidades base (~÷3) y el consumo/ regeneración de
-      combustible en consecuencia. El impulso solo en cortos, con coste alto.
-- [ ] Escalas: el mundo se siente grande; cruzarlo debe ser una decisión de partida,
-      no un paseo. Considerar aumentar el mundo a 12000×12000.
-- [ ] Repostar combustible solo en planetas propios o neutrales “amistosos”, nunca
-      en mitad del espacio.
+### Fase C — Ritmo y distancias (v1.0, implementada 2026-09-11)
+- [x] Velocidades base ~÷3: jugador 130→45 de aceleración, naves imperiales
+      18-42→9-20, wingmen 60→34, proyectiles 300→200 (vida 1.8).
+- [x] Mundo 8000→**12000×12000** (64 planetas, 22 campos de asteroides):
+      cruzarlo son minutos reales; viajar es una decisión de partida.
+      El save guarda `world` y se invalida si el tamaño cambia.
+- [x] Combustible serio: impulso caro (-40/s, rachas cortas); **solo se reposta
+      junto a planetas** — propios 30/s, aliados (relación ≥ 20) 12/s, neutros 8/s,
+      en el espacio NADA. Los asteroides ya no dan combustible.
+      *(No hay varada total: el crucero no gasta ⛽, solo el impulso.)*
+- E2E: **101 checks verdes** (check de guerra fac-fac hecho robusto: detecta el
+  disparo por shootCd/hp, no por proyectil en vuelo).
 
 ### Fase D — Niebla de guerra
 - [x] Radio de visión por nave (600) y por planeta propio (1000). *(v0.9)*

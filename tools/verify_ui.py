@@ -328,9 +328,12 @@ with sync_playwright() as pw:
       A.task = {{ type: 'defend' }}; B.task = {{ type: 'defend' }};
       A.x = 4000; A.y = 4000; B.x = 4150; B.y = 4000;
       A.shootCd = 0; B.shootCd = 0;
+      window.__hp0 = A.hp + B.hp;
     }})()""")
-    page.wait_for_timeout(1500)
-    check(page.evaluate("projectiles.some(pr => pr.owner === window.__wa || pr.owner === window.__wb)"),
+    page.wait_for_timeout(2000)
+    check(page.evaluate("""(window.__wa.hp + window.__wb.hp) < window.__hp0
+          || projectiles.some(pr => pr.owner === window.__wa || pr.owner === window.__wb)
+          || window.__wa.shootCd > 0.4 || window.__wb.shootCd > 0.4"""),
           'dos facciones en GUERRA se disparan al verse')
     page.evaluate("setRel(window.__wa.color, window.__wb.color, 0)")
     page.screenshot(path=str(SHOTS / 'ui_facciones.png'))

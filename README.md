@@ -1,13 +1,15 @@
-# 🚀 PIXEL FLEET — v0.9
+# 🚀 PIXEL FLEET — v1.0
 
 Juego de **estrategia espacial** vista cenital, pixel-art, multijugador.
 **Todas las facciones empiezan de cero**: su planeta capital y **una sola nave**,
 igual que tú. La IA juega de verdad: conquista planetas, mina asteroides y
-construye naves; negocia guerras y alianzas por pura **estrategia**. Empiezas en
-tu **capital** (escudo de 100 pts) con un caza y **5 minutos de preparación
-protegida**. Construyes tu flota nave a nave y la controlas como en un **RTS**:
-selección por cuadro, órdenes de grupo con el botón derecho. Y **todo se guarda**:
-tu partida y la de las facciones continúan exactamente donde las dejaste.
+construye naves; negocia guerras y alianzas por pura **estrategia**. El espacio
+es **grande de verdad** (12000×12000) y la **niebla de guerra** lo oculta todo:
+explorar, expandirte y elegir tus guerras es el juego. Empiezas en tu **capital**
+(escudo de 100 pts) con un caza y **5 minutos de preparación protegida**.
+Construyes tu flota nave a nave y la controlas como en un **RTS**: selección por
+cuadro, órdenes de grupo con el botón derecho. Y **todo se guarda**: tu partida,
+la de las facciones y tu mapa explorado continúan donde los dejaste.
 
 ---
 
@@ -103,6 +105,16 @@ Tus naves desplegadas se controlan como en un **Age of Empires**:
   (v0.7.1) y vuelves a pilotar y disparar al instante.
 - Las órdenes **se guardan en la partida**: al continuar, tu flota sigue ejecutándolas.
 
+### 🧭 Ritmo y distancias (v1.0)
+- El mundo es **12000×12000** (antes 8000): cruzarlo son **minutos reales**.
+  Todas las velocidades ~÷3: tu nave, las imperiales, los wingmen y los
+  proyectiles. Viajar es una decisión, no un paseo.
+- **Combustible serio**: el impulso (ESPACIO) quema 40/s — úsalo en rachas
+  cortas. **Solo repostas junto a planetas**: propios (30/s), de facciones
+  aliadas (12/s) o neutros (8/s). En mitad del espacio no recuperas nada, y los
+  asteroides ya no dan ⛽. *(Nunca te quedas varado: el crucero no gasta
+  combustible, solo el impulso.)*
+
 ### 🌫️ Niebla de guerra (v0.9)
 - Solo ves lo que está a **600 de tus naves** o **1000 de tus planetas**: naves
   enemigas, jugadores, disparos y explosiones fuera de visión **no se dibujan**.
@@ -173,8 +185,9 @@ chat). Tributo 100◈ (+40), guerra manual, deriva pacífica lenta.
 - La IA ataca según la diplomacia: en paz no te tocan; en guerra te cazan.
 
 ### ⛽ Combustible y minería
-- Impulso consume combustible; repostaje rápido en planetas propios.
-- **Asteroides**: 14 campos de rocas, **+3 ◈ y +8 de combustible** por asteroide, reaparición 20-40 s.
+- Impulso caro (40/s); repostaje **solo junto a planetas** (propios 30/s, aliados
+  12/s, neutros 8/s; en el espacio, nada). *(v1.0)*
+- **Asteroides**: 22 campos de rocas, **+3 ◈** por asteroide, reaparición 20-40 s.
 
 ### 🔧 Tienda (B)
 Motor +15% vel · Cadencia +25% fuego · Blindaje +1 HP · Depósito +25 combustible.
@@ -223,14 +236,15 @@ PYTHONIOENCODING=utf-8 ../.venv/Scripts/python tools/verify_ui.py   # desde app/
 
 ## Próximas ideas
 
-Fases C/D/F del roadmap (ritmo y distancias, niebla de guerra, UI estratégica) ·
-tutorial del control RTS (Fase G, pendiente a petición de Pedro) ·
-recursos por tipo de planeta · reparación con coste · misiones encadenadas en historia ·
-jefes de facción · estaciones espaciales comerciales · mapas con agujeros de gusano.
+Resto de la Fase E (HP alto 10-20 impactos, reparación con coste, recursos por
+tipo de planeta) · tutorial del control RTS (Fase G, pendiente a petición de Pedro) ·
+condición de victoria (eliminar facciones por su capital) · personalidades de
+facción · misiones encadenadas en historia · jefes de facción · estaciones
+espaciales comerciales · mapas con agujeros de gusano.
 
 ---
 
-*v0.9 · niebla de guerra + panel de imperio · facciones con IA real · control RTS · persistencia total*
+*v1.0 · ritmo y distancias (mundo 12000, combustible serio) · niebla de guerra · facciones con IA real · control RTS · persistencia total*
 
-> ⚠️ El save v0.8 (`pixelfleet_save_v2`) no es compatible con partidas de v0.5-v0.7:
-> al entrar por primera vez empezarás una partida nueva.
+> ⚠️ El save v1.0 (`pixelfleet_save_v2`) no es compatible con partidas de versiones
+> anteriores (el mundo cambia de tamaño): al entrar empezarás una partida nueva.
