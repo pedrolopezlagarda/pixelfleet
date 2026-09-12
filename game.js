@@ -163,9 +163,19 @@ const BOT_NAMES = ['Xx_Nova_xX', 'Zorg', 'PixelLord', 'Andromeda', 'Vega', 'Capi
   'Warp9', 'Eclipse', 'Foton', 'Gravedad', 'Zenith', 'Atlas', 'Rigel', 'Sirio'];
 const bots = [];
 // estado por facción IA: capital, hucha común, relaciones con las demás, cola de construcción
-const facState = {};   // color -> { capital, credits, rel:{color->num}, warT:{}, aiT, buildT, building }
+const facState = {};   // color -> { capital, credits, rel:{color->num}, warT:{}, aiT, buildT, building, personality }
 const FAC_SHIP_COST = 60, FAC_SHIP_TIME = 20;
 const playerAggro = {};   // color -> s restantes de "provocada por el jugador" (wingmen pueden responder)
+
+/* v1.3: personalidades de facción — cada imperio juega distinto */
+const PERSONALITIES = {
+  agresiva:    { label: '⚔️ conquistadora', warThresh: 1.3, warProb: 0.40, allyProb: 0.05, attackShare: 0.66, conquerMax: 3, incomeMul: 1.0 },
+  tortuga:     { label: '🛡️ defensiva',     warThresh: 99,  warProb: 0.02, allyProb: 0.25, attackShare: 0.33, conquerMax: 1, incomeMul: 1.0 },
+  comerciante: { label: '💰 mercantil',     warThresh: 2.0, warProb: 0.05, allyProb: 0.35, attackShare: 0.40, conquerMax: 2, incomeMul: 1.25 },
+  oportunista: { label: '🐦 oportunista',   warThresh: 2.2, warProb: 0.50, allyProb: 0.15, attackShare: 0.50, conquerMax: 2, incomeMul: 1.0 },
+};
+const PERS_KEYS = Object.keys(PERSONALITIES);
+function persOf(c) { return PERSONALITIES[(facState[c] && facState[c].personality)] || PERSONALITIES.comerciante; }
 
 function setRel(a, b, v) {
   if (facState[a]) facState[a].rel[b] = v;
@@ -222,10 +232,16 @@ function initFactions() {
     if (!cap) continue;
     cap.owner = c; cap.capital = true; cap.shieldMax = 100; cap.shield = 100;
     cap.name = 'CAPITAL ' + facName(c);
-    facState[c] = { capital: cap, credits: 20, rel: {}, warT: {}, aiT: rnd(2, 6), buildT: 0, building: false };
+    facState[c] = { capital: cap, credits: 20, rel: {}, warT: {}, aiT: rnd(2, 6), buildT: 0, building: false, personality: null };
     for (const o of FACTION_COLORS) if (o !== c) facState[c].rel[o] = 0;
     spawnFactionShip(c);
   }
+  // v1.3: repartir personalidades (barajadas; si sobran facciones, se repite alguna)
+  // No se anuncian: con niebla de guerra, el carácter de cada imperio se DESCUBRE.
+  const deck = PERS_KEYS.slice();
+  for (let i = deck.length - 1; i > 0; i--) { const j = rndi(0, i); [deck[i], deck[j]] = [deck[j], deck[i]]; }
+  let di = 0;
+  for (const c in facState) { facState[c].personality = deck[di % deck.length]; di++; }
 }
 
 /* --- IA de facción: tareas de cada nave imperial --- */
@@ -242,18 +258,20 @@ function facAssignTask(b) {
   b.task = null; b.waypoint = null;
   const fac = facState[b.color];
   if (!fac) return;
-  // 1) guerra: la mitad de las naves ataca el planeta enemigo más cercano; el resto defiende
+  // 1) guerra: parte de las naves ataca el planeta enemigo más cercano; el resto defiende
+  // (v1.3: la proporción de atacantes depende de la personalidad)
+  const pers = persOf(b.color);
   const enemies = planets.filter(p => p.owner && p.owner !== b.color && atWarFF(b.color, p.owner));
   if (enemies.length) {
     const myShips = bots.filter(o => o.imp && o.alive && o.color === b.color);
     const attackers = myShips.filter(o => o.task && o.task.type === 'attack').length;
-    if (attackers < Math.ceil(myShips.length / 2)) {
+    if (attackers < Math.ceil(myShips.length * pers.attackShare)) {
       enemies.sort((p, q) => dist2(b.x, b.y, p.x, p.y) - dist2(b.x, b.y, q.x, q.y));
       b.task = { type: 'attack', p: enemies[0] };
     } else b.task = { type: 'defend' };
     return;
   }
-  // 2) expansión: conquistar el planeta neutral más cercano (máx. 2 naves por planeta)
+  // 2) expansión: conquistar el planeta neutral más cercano (máx. según personalidad)
   let cands = planets.filter(p => !p.owner);
   if (prepT > 0 && playerCapital)   // en preparación, lejos de la capital del jugador
     cands = cands.filter(p => dist2(p.x, p.y, playerCapital.x, playerCapital.y) >= 2600 * 2600);
@@ -261,7 +279,7 @@ function facAssignTask(b) {
   for (const p of cands) {
     const onIt = bots.filter(o => o.imp && o.alive && o.color === b.color && o !== b &&
                                  o.task && o.task.type === 'conquer' && o.task.p === p).length;
-    if (onIt < 2) { b.task = { type: 'conquer', p }; return; }
+    if (onIt < pers.conquerMax) { b.task = { type: 'conquer', p }; return; }
   }
   // 3) economía: minar el asteroide más cercano
   let best = null, bd = Infinity;
@@ -274,12 +292,14 @@ function facAssignTask(b) {
   b.task = { type: 'defend' };
 }
 // diplomacia estratégica: neutral por defecto; guerra si claramente más fuerte,
-// alianza si estáis igualados, paz si la guerra va mal o se alarga
+// alianza si estáis igualados, paz si la guerra va mal o se alarga.
+// v1.3: los umbrales dependen de la PERSONALIDAD de la facción
 function facDiplomacy(c) {
   const f = facState[c];
   if (!f) return;
   const pMe = facPower(c);
   if (pMe <= 0) return;   // facción eliminada
+  const pers = persOf(c);
   for (const o of FACTION_COLORS) {
     if (o === c || o === player.color) continue;   // con el jugador manda el panel de diplomacia
     if (!facState[o] || facPower(o) <= 0) { f.rel[o] = 0; continue; }
@@ -292,12 +312,20 @@ function facDiplomacy(c) {
       }
     } else if (rel >= 50) {
       if (Math.random() < 0.15) { setRel(c, o, 0); chatSys('📡 La alianza entre ' + facName(c) + ' y ' + facName(o) + ' se enfría.'); }
-    } else if (pMe >= pOt * 1.6 && Math.random() < 0.25) {
-      setRel(c, o, -100); f.warT[o] = 0;
-      chatSys('🔥 ¡' + facName(c) + ' declara la GUERRA a ' + facName(o) + '!');
-    } else if (Math.abs(pMe - pOt) <= 2 && Math.random() < 0.15) {
-      setRel(c, o, 50);
-      chatSys('🤝 ' + facName(c) + ' y ' + facName(o) + ' firman una ALIANZA.');
+    } else {
+      // v1.3: el oportunista se suma a guerras ya abiertas contra un débil
+      let thresh = pers.warThresh;
+      if (f.personality === 'oportunista') {
+        const otherWars = Object.entries(facState[o].rel).filter(([k, v]) => k !== c && v <= -30).length;
+        if (otherWars > 0) thresh = Math.min(thresh, 1.2);
+      }
+      if (pMe >= pOt * thresh && Math.random() < pers.warProb) {
+        setRel(c, o, -100); f.warT[o] = 0;
+        chatSys('🔥 ¡' + facName(c) + ' (' + pers.label + ') declara la GUERRA a ' + facName(o) + '!');
+      } else if (Math.abs(pMe - pOt) <= 2 && Math.random() < pers.allyProb) {
+        setRel(c, o, 50);
+        chatSys('🤝 ' + facName(c) + ' y ' + facName(o) + ' firman una ALIANZA.');
+      }
     }
   }
 }
@@ -355,8 +383,15 @@ function facShipThink(b, dt) {
       if (d < td) { td = d; tgt = o; }
     }
     // otras facciones: SOLO en guerra declarada o como represalia (neutralidad por defecto)
+    // v1.3: los piratas (grises) son enemigos de todos — se les dispara siempre
     for (const o of bots) {
-      if (o === b || !o.alive || !o.imp || o.color === b.color) continue;
+      if (o === b || !o.alive || o.color === b.color) continue;
+      if (!o.imp && !o.pirate) continue;
+      if (o.pirate) {
+        const d = dist2(b.x, b.y, o.x, o.y);
+        if (d < 400 * 400 && d < td) { td = d; tgt = o; }
+        continue;
+      }
       const war = atWarFF(b.color, o.color);
       const retal = b.retalT > 0 && b.lastHitBy === o.color;
       if (!war && !retal) continue;
@@ -676,7 +711,7 @@ function update(dt) {
   for (const c in facState) {
     const f = facState[c];
     const owned = planets.filter(p => p.owner === c);
-    f.credits += owned.reduce((s, p) => s + (p.capital ? PLANET_INCOME * 3 : (p.res === 'creditos' ? PLANET_INCOME : PLANET_INCOME * 0.5)), 0) * dt;
+    f.credits += owned.reduce((s, p) => s + (p.capital ? PLANET_INCOME * 3 : (p.res === 'creditos' ? PLANET_INCOME : PLANET_INCOME * 0.5)), 0) * dt * (persOf(c).incomeMul || 1);   // v1.3: los mercantiles ganan más
     const ships = bots.filter(b => b.imp && b.alive && b.color === c).length;
     const cap = 2 + owned.length;
     if (!f.building && f.credits >= FAC_SHIP_COST && ships < cap && f.capital && f.capital.owner === c) {
@@ -696,11 +731,12 @@ function update(dt) {
     }
   }
   for (const b of bots) {
-    // v0.6/v0.8: las naves construidas y las imperiales se pierden de verdad
-    if (!b.alive && (b.built || b.imp)) { b.gone = true; continue; }
+    // v0.6/v0.8/v1.3: las naves construidas, imperiales y piratas se pierden de verdad
+    if (!b.alive && (b.built || b.imp || b.pirate)) { b.gone = true; continue; }
     if (!b.alive) { b.respawnT -= dt; if (b.respawnT <= 0) respawnShip(b); continue; }
     // v0.6: los wingmen (tus naves construidas) tienen su propia IA
     if (b.built) { wingmanUpdate(b, dt); continue; }
+    if (b.pirate) { pirateThink(b, dt); continue; }   // v1.3
     facShipThink(b, dt);   // v0.8: IA de facción
   }
 
@@ -734,10 +770,11 @@ function update(dt) {
           if (a.hp <= 0) {
             a.alive = false; a.respawnT = rnd(20, 40);
             explode(a.x, a.y, '#a0aec0');
+            const vein = richVein && dist2(a.x, a.y, richVein.x, richVein.y) < 400 * 400 ? 2 : 1;   // v1.3: veta rica
             if (pr.owner === player) {
-              player.credits += 3;   // v1.0: los asteroides ya NO dan combustible (se reposta en planetas)
+              player.credits += 3 * vein;   // v1.0: los asteroides ya NO dan combustible (se reposta en planetas)
             } else if (pr.owner && pr.owner.imp && facState[pr.owner.color]) {
-              facState[pr.owner.color].credits += 3;   // v0.8: la IA mina para su facción
+              facState[pr.owner.color].credits += 3 * vein;   // v0.8: la IA mina para su facción
             }
           } else {
             particles.push({ x: a.x, y: a.y, vx: rnd(-40, 40), vy: rnd(-40, 40), life: 0.3, color: '#a0aec0' });
@@ -1506,7 +1543,7 @@ function saveGame() {
       // solo planetas con dueño (los neutros son el estado inicial determinista)
       planets: planets.map((p, i) => p.owner ? { i, owner: p.owner, shield: p.shield, cap: p.capital ? 1 : 0, known: p.knownOwner || null } : null).filter(Boolean),
       fog: Array.from(explored).join(''),   // v0.9: mapa explorado (1600 celdas 0/1)
-      bots: bots.map(b => ({
+      bots: bots.filter(b => !b.pirate).map(b => ({   // v1.3: los piratas son del evento, no se guardan
         name: b.name, color: b.color, x: b.x, y: b.y,
         hp: b.hp, credits: Math.floor(b.credits), kills: b.kills || 0,
         homeIdx: planets.indexOf(b.home), expandR: b.expandR,
@@ -1519,6 +1556,7 @@ function saveGame() {
         for (const c in facState) o[c] = {
           credits: Math.floor(facState[c].credits), rel: facState[c].rel, warT: facState[c].warT,
           buildT: facState[c].buildT, building: facState[c].building, dead: !!facState[c].dead,
+          personality: facState[c].personality || null,   // v1.3
         };
         return o;
       })(),
@@ -1587,6 +1625,7 @@ function applySave(d) {
     facState[c].credits = sv.credits || 0;
     facState[c].buildT = sv.buildT || 0; facState[c].building = !!sv.building;
     facState[c].dead = !!sv.dead;   // v1.2
+    facState[c].personality = sv.personality || PERS_KEYS[rndi(0, PERS_KEYS.length - 1)];   // v1.3
     if (sv.rel) facState[c].rel = sv.rel;
     if (sv.warT) facState[c].warT = sv.warT;
   }
@@ -1673,9 +1712,10 @@ function renderDiplo() {
     .map(c => {
       const v = standings[c];
       const [label, col] = relationLabel(v);
+      const persLabel = facState[c] && facState[c].personality ? ' · ' + persOf(c).label : '';
       return `<div class="diplo-row">
         <div class="dot" style="background:${c}"></div>
-        <div class="name">${c}<span class="rel-status">${Math.round(v)} · ${label}</span></div>
+        <div class="name">${c}${persLabel}<span class="rel-status">${Math.round(v)} · ${label}</span></div>
         <span class="rel" style="color:${col}">${label}</span>
         <button data-c="${c}" data-act="tribute">100◈ tributo</button>
         <button class="war" data-c="${c}" data-act="war">guerra</button>
@@ -1730,7 +1770,7 @@ const _draw = draw;
 draw = function () { _draw(); asteroidsDraw(); };
 // v0.9: la niebla se pinta lo último en coords de mundo (tapa lo no explorado)
 const _draw9 = draw;
-draw = function () { _draw9(); fogDraw(); };
+draw = function () { _draw9(); eventsDraw(); fogDraw(); };   // v1.3: eventos bajo la niebla
 const _mm = drawMinimap;
 drawMinimap = function () {
   _mm();
@@ -2198,7 +2238,7 @@ function wingmanUpdate(b, dt) {
     let tgt = null, td = fireRange * fireRange;
     for (const o of bots) {
       if (o === b || !o.alive || o.color === player.color) continue;
-      if ((standings[o.color] || 0) > -30 && (playerAggro[o.color] || 0) <= 0) continue;   // v0.8
+      if ((standings[o.color] || 0) > -30 && (playerAggro[o.color] || 0) <= 0 && !o.pirate) continue;   // v0.8 disciplina · v1.3 piratas siempre
       const d = dist2(o.x, o.y, fireAnchor.x, fireAnchor.y);
       if (d < td) { td = d; tgt = o; }
     }
@@ -2495,7 +2535,10 @@ function renderEmpire() {
   for (const c of FACTION_COLORS) {
     if (c === player.color) continue;
     const [label, col] = relationLabel(standings[c] || 0);
-    html += '<div class="diplo-row"><span style="color:' + c + '">' + facName(c) + '</span>' +
+    // v1.3: la personalidad solo se muestra si has «contactado» con esa facción
+    const met = (standings[c] || 0) !== 0 || planets.some(p => (p.knownOwner || null) === c);
+    const pers = met && facState[c] ? ' · ' + persOf(c).label : '';
+    html += '<div class="diplo-row"><span style="color:' + c + '">' + facName(c) + pers + '</span>' +
             '<span style="color:' + col + '">' + label + '</span></div>';
   }
   const relRows = [];
@@ -2568,3 +2611,146 @@ update = function (dt) {
     endBanner.classList.add('hidden');
   }
 };
+
+/* =========================================================
+   v1.3 — EVENTOS GALÁCTICOS
+   Cada 90-180 s (tras la preparación): oleada de PIRATAS
+   hostiles a todos, VETA RICA (asteroides de una zona ×2) o
+   AGUJERO DE GUSANO temporal entre dos puntos lejanos.
+   Son transitorios: no se guardan en el save.
+   ========================================================= */
+const PIRATE_COLOR = '#9aa5b1';
+let eventT = 100;            // primer evento ~100 s tras la preparación
+let richVein = null;         // { x, y, t }
+const wormholes = [];        // { x, y, tx, ty, t }
+
+function spawnPirate(x, y) {
+  const b = {
+    name: 'Saqueador-' + rndi(10, 99), color: PIRATE_COLOR,
+    x: clamp(x, 20, WORLD.w - 20), y: clamp(y, 20, WORLD.h - 20),
+    angle: rnd(0, TAU), speed: rnd(14, 22), waypoint: null,
+    hp: 8, alive: true, respawnT: 0, shootCd: rnd(0.5, 2), credits: 0, kills: 0,
+    vx: 0, vy: 0, flash: 0, home: { x, y }, expandR: 0,
+    pirate: true, task: null, retalT: 0, lastHitBy: null,
+  };
+  bots.push(b);
+  return b;
+}
+function pirateThink(b, dt) {
+  b.flash = Math.max(0, b.flash - dt);
+  b.shootCd -= dt;
+  // objetivo: la nave más cercana, de quien sea (los piratas no conocen la paz)
+  let tgt = null, td = Infinity;
+  for (const o of bots) {
+    if (o === b || !o.alive || o.pirate) continue;
+    const d = dist2(b.x, b.y, o.x, o.y);
+    if (d < td) { td = d; tgt = o; }
+  }
+  if (player.alive) {
+    const d = dist2(b.x, b.y, player.x, player.y);
+    if (d < td) { td = d; tgt = player; }
+  }
+  let tx, ty;
+  if (tgt && td < 2500 * 2500) { tx = tgt.x; ty = tgt.y; }
+  else {
+    if (!b.waypoint || dist2(b.x, b.y, b.waypoint.x, b.waypoint.y) < 900)
+      b.waypoint = { x: clamp(b.home.x + rnd(-800, 800), 20, WORLD.w - 20),
+                     y: clamp(b.home.y + rnd(-800, 800), 20, WORLD.h - 20) };
+    tx = b.waypoint.x; ty = b.waypoint.y;
+  }
+  const wa = Math.atan2(ty - b.y, tx - b.x);
+  b.angle = angleLerp(b.angle, wa, 1 - Math.pow(0.05, dt));
+  if (dist2(b.x, b.y, tx, ty) > 40 * 40) {
+    b.x = clamp(b.x + Math.cos(b.angle) * b.speed * dt, 20, WORLD.w - 20);
+    b.y = clamp(b.y + Math.sin(b.angle) * b.speed * dt, 20, WORLD.h - 20);
+  }
+  if (b.shootCd <= 0 && tgt && td < 420 * 420 && prepT <= 0) {
+    const a = Math.atan2(tgt.y - b.y, tgt.x - b.x) + rnd(-0.15, 0.15);
+    shoot(b.x + Math.cos(a) * 8, b.y + Math.sin(a) * 8, a, b.color, b);
+    b.shootCd = rnd(0.8, 1.4);
+  }
+}
+function fireEvent(force) {
+  const kind = force || ['piratas', 'veta', 'gusano'][rndi(0, 2)];
+  if (kind === 'piratas') {
+    const x = rnd(1000, WORLD.w - 1000), y = rnd(1000, WORLD.h - 1000);
+    const n = rndi(2, 3);
+    for (let i = 0; i < n; i++) spawnPirate(x + rnd(-150, 150), y + rnd(-150, 150));
+    chatSys('🏴‍☠️ ¡PIRATAS detectados en (' + Math.floor(x) + ',' + Math.floor(y) + ')! Atacan a todo el mundo.');
+  } else if (kind === 'veta') {
+    const alive = asteroids.filter(a => a.alive);
+    if (!alive.length) return;
+    const a = alive[rndi(0, alive.length - 1)];
+    richVein = { x: a.x, y: a.y, t: 60 };
+    chatSys('🌟 VETA RICA en (' + Math.floor(a.x) + ',' + Math.floor(a.y) + '): los asteroides de la zona dan ◈×2 durante 60 s.');
+  } else {
+    let x1 = 0, y1 = 0, x2 = 0, y2 = 0, tries = 0;
+    do {
+      x1 = rnd(800, WORLD.w - 800); y1 = rnd(800, WORLD.h - 800);
+      x2 = rnd(800, WORLD.w - 800); y2 = rnd(800, WORLD.h - 800);
+      tries++;
+    } while (dist2(x1, y1, x2, y2) < 4000 * 4000 && tries < 20);
+    wormholes.push({ x: x1, y: y1, tx: x2, ty: y2, t: 90 });
+    chatSys('🕳️ AGUJERO DE GUSANO estable entre (' + Math.floor(x1) + ',' + Math.floor(y1) +
+            ') y (' + Math.floor(x2) + ',' + Math.floor(y2) + ') durante 90 s.');
+  }
+}
+function eventsUpdate(dt) {
+  if (prepT > 0) return;   // durante la preparación no hay eventos
+  eventT -= dt;
+  if (eventT <= 0) { eventT = rnd(90, 180); fireEvent(); }
+  if (richVein) {
+    richVein.t -= dt;
+    if (richVein.t <= 0) { richVein = null; chatSys('🌟 La veta rica se ha agotado.'); }
+  }
+  for (let i = wormholes.length - 1; i >= 0; i--) {
+    wormholes[i].t -= dt;
+    if (wormholes[i].t <= 0) { wormholes.splice(i, 1); chatSys('🕳️ El agujero de gusano se ha colapsado.'); }
+  }
+  if (wormholes.length) {
+    for (const s of [player, ...bots]) {
+      if (!s.alive) continue;
+      s.whCd = Math.max(0, (s.whCd || 0) - dt);
+      if (s.whCd > 0) continue;
+      for (const w of wormholes) {
+        if (dist2(s.x, s.y, w.x, w.y) < 45 * 45) {
+          s.x = clamp(w.tx + rnd(-60, 60), 20, WORLD.w - 20); s.y = clamp(w.ty + rnd(-60, 60), 20, WORLD.h - 20);
+          s.whCd = 3;
+          if (s === player) chatSys('🕳️ ¡Salto por el agujero de gusano!');
+          explode(s.x, s.y, '#c792ff');
+          break;
+        }
+        if (dist2(s.x, s.y, w.tx, w.ty) < 45 * 45) {
+          s.x = clamp(w.x + rnd(-60, 60), 20, WORLD.w - 20); s.y = clamp(w.y + rnd(-60, 60), 20, WORLD.h - 20);
+          s.whCd = 3;
+          if (s === player) chatSys('🕳️ ¡Salto por el agujero de gusano!');
+          explode(s.x, s.y, '#c792ff');
+          break;
+        }
+      }
+    }
+  }
+}
+function eventsDraw() {   // bajo la niebla: solo lo visible se dibuja
+  const t = performance.now() / 1000;
+  for (const w of wormholes) {
+    for (const [x, y] of [[w.x, w.y], [w.tx, w.ty]]) {
+      if (!fogVisible(x, y)) continue;
+      const pr = 30 + 8 * Math.sin(t * 4);
+      ctx.strokeStyle = '#c792ff'; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.arc(x, y, pr, 0, TAU); ctx.stroke();
+      ctx.strokeStyle = 'rgba(199,146,255,0.35)';
+      ctx.beginPath(); ctx.arc(x, y, pr + 12, 0, TAU); ctx.stroke();
+    }
+  }
+  if (richVein) {
+    ctx.strokeStyle = 'rgba(255,209,102,0.55)'; ctx.lineWidth = 2;
+    for (const a of asteroids) {
+      if (!a.alive || dist2(a.x, a.y, richVein.x, richVein.y) > 400 * 400) continue;
+      if (!fogVisible(a.x, a.y)) continue;
+      ctx.beginPath(); ctx.arc(a.x, a.y, a.r + 6, 0, TAU); ctx.stroke();
+    }
+  }
+}
+const _update13 = update;
+update = function (dt) { _update13(dt); eventsUpdate(dt); };

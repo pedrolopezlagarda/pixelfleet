@@ -1,4 +1,4 @@
-# 🚀 PIXEL FLEET — v1.2
+# 🚀 PIXEL FLEET — v1.3
 
 Juego de **estrategia espacial** vista cenital, pixel-art, multijugador.
 **Todas las facciones empiezan de cero**: su planeta capital y **una sola nave**,
@@ -179,6 +179,18 @@ chat). Tributo 100◈ (+40), guerra manual, deriva pacífica lenta.
 - Conquistar: **+10 ◈**. Cada planeta propio: **+1 ◈/s** (la capital ×3). Zonas enemigas
   contestan la captura.
 
+### 🎭 Personalidades y eventos galácticos (v1.3)
+- **Cada facción IA tiene carácter** (se descubre al contactar con ella, en el
+  panel de imperio o diplomacia): ⚔️ **conquistadora** (declara guerras con poca
+  ventaja y manda más atacantes), 🛡️ **defensiva** (casi nunca ataca, poco a poco
+  se expande), 💰 **mercantil** (+25 % de ingresos, prefiere alianzas), 🐦
+  **oportunista** (se suma a guerras ya abiertas contra el débil).
+- **Eventos galácticos** cada 90-180 s (tras la preparación), anunciados en el
+  chat: 🏴‍☠️ **oleada de piratas** grises hostiles a todos, 🌟 **veta rica**
+  (asteroides de una zona dan ◈×2 durante 60 s) y 🕳️ **agujeros de gusano**
+  temporales que teletransportan entre dos puntos lejanos. Son transitorios:
+  no se guardan en la partida.
+
 ### 💥 Combate y economía estratégica (v1.1)
 - **HP alto**: naves de 10-20 impactos (tú: 12 base, +2 por nivel de blindaje;
   el Acorazado suma +9). Las bajas cuestan: **+25 ◈** por nave enemiga.
@@ -236,7 +248,7 @@ Posiciones a 10 Hz, disparos y chat retransmitidos **por sala**.
 | `style.css` | Estilo retro pixelado |
 | `game.js` | Motor completo + sistemas v0.3/v0.4/v0.5/v0.6 |
 | `server.js` | Servidor WebSocket multijugador con salas |
-| `tools/verify_ui.py` | Test E2E real (Playwright): 112 checks — menús, clics, flota, RTS, facciones IA, niebla, economía, victoria, persistencia, zoom |
+| `tools/verify_ui.py` | Test E2E real (Playwright): 121 checks — menús, clics, flota, RTS, facciones IA, niebla, economía, eventos, victoria, persistencia, zoom |
 | `README.md` | Este documento |
 
 ### Tests E2E
@@ -256,7 +268,7 @@ espaciales comerciales · mapas con agujeros de gusano.
 
 ---
 
-*v1.2 · victoria real · economía estratégica (⛏/⛽/◈) · HP alto y reparación · niebla de guerra · facciones con IA · control RTS*
+*v1.3 · personalidades de facción y eventos galácticos · victoria real · economía estratégica · niebla de guerra · control RTS*
 
 > ⚠️ El save v1.0 (`pixelfleet_save_v2`) no es compatible con partidas de versiones
 > anteriores (el mundo cambia de tamaño): al entrar empezarás una partida nueva.

@@ -421,6 +421,52 @@ with sync_playwright() as pw:
     page.keyboard.press('Escape')
     page.wait_for_timeout(150)
 
+    # ===== 5d2. v1.3: personalidades + eventos galácticos =====
+    print('— v1.3: personalidades y eventos —')
+    check(page.evaluate("FACTION_COLORS.filter(c => c !== player.color).every(c => !!PERSONALITIES[facState[c].personality])"),
+          'cada facción IA tiene una personalidad asignada')
+    # la agresiva declara guerra cuando es mucho más fuerte (azar fijado para el test)
+    page.evaluate("""(() => {
+      const A = FACTION_COLORS.find(c => c !== player.color);
+      const B = FACTION_COLORS.find(c => c !== player.color && c !== A);
+      window.__fa = A; window.__fb = B;
+      facState[A].personality = 'agresiva'; facState[B].personality = 'tortuga';
+      setRel(A, B, 0);
+      let n = 0;
+      for (const p of planets) { if (!p.owner && n < 6) { p.owner = A; n++; } }   // A se hace fuerte
+      const or = Math.random; Math.random = () => 0.01;
+      facDiplomacy(A);
+      Math.random = or;
+    })()""")
+    check(page.evaluate("facState[window.__fa].rel[window.__fb]") == -100,
+          'la facción AGRESIVA declara la guerra si es mucho más fuerte')
+    check('declara la GUERRA' in page.locator('#chat-log').inner_text(), 'la guerra se anuncia en el chat')
+    page.evaluate("setRel(window.__fa, window.__fb, 0)")
+    # eventos forzados
+    page.evaluate("fireEvent('veta')")
+    check(page.evaluate("!!richVein"), 'evento: VETA RICA activa (asteroides ×2)')
+    page.evaluate("fireEvent('gusano')")
+    check(page.evaluate("wormholes.length") >= 1, 'evento: AGUJERO DE GUSANO creado')
+    page.evaluate("player.x = wormholes[0].x; player.y = wormholes[0].y; player.vx = player.vy = 0;")
+    page.wait_for_timeout(500)
+    check(page.evaluate("dist2(player.x, player.y, wormholes[0].tx, wormholes[0].ty) < 200*200"),
+          'el agujero de gusano TELETRANSPORTA al jugador')
+    page.evaluate("fireEvent('piratas')")
+    check(page.evaluate("bots.filter(b => b.pirate).length") >= 2, 'evento: oleada de PIRATAS (naves grises)')
+    page.evaluate("""(() => {
+      const p = bots.find(b => b.pirate);
+      window.__pir = p; p.x = player.x + 150; p.y = player.y; p.shootCd = 0;
+      player.invuln = 0; window.__hpP = player.hp;
+    })()""")
+    page.wait_for_timeout(2000)
+    check(page.evaluate("""player.hp < window.__hpP
+          || projectiles.some(pr => pr.owner === window.__pir)
+          || window.__pir.shootCd > 0.4"""),
+          'el pirata te ataca aunque estéis en paz')
+    check(page.evaluate("bots.filter(b => b.pirate).every(b => b.color === '#9aa5b1')"),
+          'los piratas son grises (no son de ninguna facción)')
+    page.screenshot(path=str(SHOTS / 'ui_eventos.png'))
+
     # ===== 5e. v1.1: escudos con mineral + reparación · v1.2: victoria real =====
     print('— v1.1: economía estratégica —')
     page.evaluate("player.x = playerCapital.x + playerCapital.r + 10; player.y = playerCapital.y; player.vx = player.vy = 0;")
@@ -486,9 +532,9 @@ with sync_playwright() as pw:
     page.evaluate("for (const c in facState) { facState[c].building = false; facState[c].credits = 0; }")
     fog0 = page.evaluate("explored.reduce((a, v) => a + v, 0)")
     page.evaluate("saveGame()")
-    saved = page.evaluate("({credits: Math.floor(player.credits), bots: bots.length, "
+    saved = page.evaluate("({credits: Math.floor(player.credits), bots: bots.filter(b => !b.pirate).length, "
                           "hangar: hangarShips.join(','), ship: player.ship, "
-                          "kills: player.kills, motor: player.upgrades.motor})")
+                          "kills: player.kills, motor: player.upgrades.motor})")   # los piratas no se guardan (evento transitorio)
     page.reload()
     page.wait_for_timeout(500)
     check('CONTINUAR PARTIDA' in page.locator('#btn-play').inner_text(), 'con save: botón «▶ CONTINUAR PARTIDA»')
