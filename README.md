@@ -74,7 +74,7 @@ imperio son siempre de otros colores). Desde el hangar (H), junto a tu capital:
 | Caza | Equilibrada | 60◈ | 15 s |
 | Avispa | +35% velocidad, frágil | 150◈ | 25 s |
 | Explorador | depósito ×1.6 | 200◈ | 30 s |
-| Acorazado | +3 HP, lenta, fuego pesado | 300◈ | 40 s |
+| Acorazado | +9 HP, lenta, fuego pesado | 300◈ | 40 s |
 
 - La cola de construcción trabaja en la capital; al terminar, la nave va **al hangar**
   (máx. 10 guardadas) — no sale sola.
@@ -178,6 +178,13 @@ chat). Tributo 100◈ (+40), guerra manual, deriva pacífica lenta.
   romperlo antes de capturar. El escudo **regenera 1,5 pts/s** — rompe rápido o vuelve a empezar.
 - Conquistar: **+10 ◈**. Cada planeta propio: **+1 ◈/s** (la capital ×3). Zonas enemigas
   contestan la captura.
+
+### 🎨 Gráficos (v1.5)
+- **Sprite distinto por tipo de nave** (caza, avispa, acorazado, explorador), con
+  escala según el modelo; los piratas van en dardo gris.
+- **Estela de motor** en todas las naves al desplazarse (llama parpadeante).
+- **Flash blanco** al recibir daño (antes la nave se transparentaba) y bots con
+  **opacidad completa** (estaban al 75 %).
 
 ### 🔬 Árbol de tecnología (v1.4)
 En la tienda (B), debajo de las mejoras base: cuando una mejora llega a **nivel 3**
