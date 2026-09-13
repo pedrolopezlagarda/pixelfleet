@@ -399,11 +399,12 @@ function facShipThink(b, dt) {
   if (tx != null) {
     const wa = Math.atan2(ty - b.y, tx - b.x);
     b.angle = angleLerp(b.angle, wa, 1 - Math.pow(0.05, dt));
-    if (dist2(b.x, b.y, tx, ty) > 30 * 30) {
+    b.thrustLvl = dist2(b.x, b.y, tx, ty) > 30 * 30 ? 1 : 0;   // v1.5
+    if (b.thrustLvl) {
       b.x = clamp(b.x + Math.cos(b.angle) * b.speed * dt, 20, WORLD.w - 20);
       b.y = clamp(b.y + Math.sin(b.angle) * b.speed * dt, 20, WORLD.h - 20);
     }
-  }
+  } else b.thrustLvl = 0;
 
   /* --- fuego (durante la preparación nadie pelea, pero sí se mina) --- */
   if (b.shootCd > 0) return;
@@ -1096,10 +1097,10 @@ function draw() {
       ctx.fillStyle = b.color;
       ctx.fillRect(b.x - 1.5 / z, b.y - 1.5 / z, 3 / z, 3 / z);
     } else {
-      // v1.5: opacidad completa, estela al andar, flash blanco y sprite por tipo
+      // v1.5: opacidad completa, estela según empuje real, flash blanco y sprite por tipo
       const sz = b.built ? 3.5 * shipDef(b.shipType).size : 3;
       const type = b.built ? b.shipType : (b.pirate ? 'avispa' : 'caza');
-      drawShipWithHalo(b.x, b.y, b.angle, b.color, sz, 1, true, b.flash > 0, type);
+      drawShipWithHalo(b.x, b.y, b.angle, b.color, sz, 1, b.thrustLvl || 0, b.flash > 0, type);
     }
   }
 
@@ -1147,8 +1148,10 @@ function draw() {
       ctx.strokeStyle = player.color; ctx.lineWidth = 1.5 / z;
       ctx.beginPath(); ctx.arc(player.x, player.y, 6 / z, 0, TAU); ctx.stroke();
     } else {
-      const moving = Math.abs(player.vx) + Math.abs(player.vy) > 30;
-      drawShipWithHalo(player.x, player.y, player.angle, player.color, 4 * getShipMod().size, player.invuln > 0 ? 0.5 + 0.4 * Math.sin(performance.now() / 60) : 1, moving || undefined, player.flash > 0, player.ship);
+      // v1.5: estela al MOVERSE (umbral bajo: el crucero es lento) y más grande con el impulso
+      const boostingNow = keys[' '] && player.fuel > 0;
+      const moving = Math.abs(player.vx) + Math.abs(player.vy) > 5;
+      drawShipWithHalo(player.x, player.y, player.angle, player.color, 4 * getShipMod().size, player.invuln > 0 ? 0.5 + 0.4 * Math.sin(performance.now() / 60) : 1, boostingNow ? 2 : (moving ? 1 : 0), player.flash > 0, player.ship);
       if (z >= 0.8) {
         ctx.fillStyle = '#ffd166'; ctx.font = (7 / z) + 'px monospace'; ctx.textAlign = 'center';
         ctx.fillText(player.name, player.x, player.y - 14 / z);
@@ -1207,13 +1210,15 @@ function drawShipWithHalo(x, y, angle, color, size, alpha, thrust, flash, type) 
   ctx.beginPath(); ctx.arc(x, y, size + 8, angle - 0.5, angle + 0.5); ctx.stroke();
   ctx.translate(x, y);
   ctx.rotate(angle);
-  // v1.5: estela de motor de verdad — llama parpadeante detrás de la nave al andar
+  // v1.5: estela de motor de verdad — llama parpadeante detrás de la nave al andar.
+  // thrust = nivel de empuje: 1 crucero (al moverse), 2 IMPULSO (llama ×1,9)
   if (thrust) {
+    const boostF = thrust >= 2 ? 1.9 : 1;
     for (let i = 0; i < 3; i++) {
-      const len = (3 + i * 3 + rndi(0, 2)) * k;
+      const len = (3 + i * 3 + rndi(0, 2)) * k * boostF;
       ctx.globalAlpha = alpha * (0.95 - i * 0.3);
       ctx.fillStyle = i === 0 ? '#fff6d0' : (i === 1 ? '#ffd166' : '#ff9f5a');
-      ctx.fillRect(-4 * k - len, -0.5 * k, len, 1 * k);
+      ctx.fillRect(-4 * k - len, -0.5 * k * boostF, len, 1 * k * boostF);
     }
   }
   ctx.globalAlpha = alpha;
@@ -2347,6 +2352,8 @@ function wingmanUpdate(b, dt) {
   const dd = Math.sqrt(dist2(b.x, b.y, tx, ty));
   const wa = Math.atan2(ty - b.y, tx - b.x);
   b.angle = angleLerp(b.angle, wa, 1 - Math.pow(0.05, dt));
+  // v1.5: nivel de estela según lo lejos del objetivo (lejos = acelera a tope)
+  b.thrustLvl = dd > 30 ? (dd > 300 ? 2 : 1) : 0;
   if (dd > 30) {
     const sp = 34 * mod.accel * clamp(dd / 80, 0.5, 2.5);   // v1.0: wingmen acordes al ritmo ÷3
     b.x = clamp(b.x + Math.cos(b.angle) * sp * dt, 20, WORLD.w - 20);
@@ -2781,7 +2788,8 @@ function pirateThink(b, dt) {
   }
   const wa = Math.atan2(ty - b.y, tx - b.x);
   b.angle = angleLerp(b.angle, wa, 1 - Math.pow(0.05, dt));
-  if (dist2(b.x, b.y, tx, ty) > 40 * 40) {
+  b.thrustLvl = dist2(b.x, b.y, tx, ty) > 40 * 40 ? 1 : 0;   // v1.5
+  if (b.thrustLvl) {
     b.x = clamp(b.x + Math.cos(b.angle) * b.speed * dt, 20, WORLD.w - 20);
     b.y = clamp(b.y + Math.sin(b.angle) * b.speed * dt, 20, WORLD.h - 20);
   }
