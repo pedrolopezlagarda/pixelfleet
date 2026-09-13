@@ -209,7 +209,34 @@ with sync_playwright() as pw:
     check(page.evaluate("fleetCount()") == 0 and page.evaluate("hangarShips.length") == 1,
           'RECOGER devuelve la nave al hangar')
 
+    # ===== v1.5.2: órdenes por radio + ESPACIO no activa botones =====
+    print('— v1.5.2: radio y ESPACIO —')
+    page.evaluate("player.x = playerCapital.x + 3000; player.y = playerCapital.y; player.vx = player.vy = 0; cam.x = player.x; cam.y = player.y;")
+    page.evaluate("player.credits += 300")
+    page.evaluate("queueShip('caza')")   # directo, sin panel
+    check(page.evaluate("buildQueue.length") == 1, 'construir funciona LEJOS de la capital (órdenes por radio)')
+    page.evaluate("buildQueue.length = 0; player.credits -= 60")   # deshacer: no romper los checks siguientes
+    page.click('button[data-hact="follow"][data-hi="0"]')   # hangar abierto, 1 caza guardada
+    page.wait_for_timeout(250)
+    check(page.evaluate("fleetCount()") == 1, 'desplegar funciona LEJOS de la capital (sale y viene sola)')
+    page.click('#hangar-fleet button[data-fact="recall"]')
+    page.wait_for_timeout(250)
+    check(page.evaluate("fleetCount()") == 0 and page.evaluate("hangarShips.length") == 1,
+          'recogida de vuelta — estado restaurado')
+    page.evaluate("player.x = playerCapital.x + playerCapital.r + 10; player.y = playerCapital.y; player.vx = player.vy = 0; cam.x = player.x; cam.y = player.y;")
+    page.wait_for_timeout(300)
+    page.click('#toolbar button[data-panel="shop"]')   # el clic deja el FOCO en el botón
+    page.wait_for_timeout(250)
+    check(page.locator('#shop').is_visible(), 'tienda abierta (con el foco en su icono)')
+    page.keyboard.press(' ')
+    page.wait_for_timeout(250)
+    check(page.locator('#shop').is_visible(), 'ESPACIO ya NO reactiva el botón con foco (v1.5.2)')
+    page.keyboard.press('Escape')
+    page.wait_for_timeout(150)
+
     print('— hangar: PILOTAR —')
+    page.click('#toolbar button[data-panel="hangar"]')   # reabrir (la sección anterior cerró los paneles)
+    page.wait_for_timeout(300)
     page.evaluate("player.credits += 200")
     page.click('button[data-build="avispa"]')
     page.wait_for_timeout(200)
@@ -367,7 +394,7 @@ with sync_playwright() as pw:
           'la IA conquista un planeta neutral por presencia')
 
     # la IA mina asteroides para la hucha de su facción
-    creds0 = page.evaluate("""(() => {
+    page.evaluate("""(() => {
       const b = bots.find(x => x.imp && x !== window.__conq) || window.__conq;
       window.__miner = b;
       facState[b.color].aiT = 999;
@@ -375,12 +402,12 @@ with sync_playwright() as pw:
       for (const a of asteroids) { if (!a.alive) continue;
         const d = (a.x-b.x)**2 + (a.y-b.y)**2; if (d < bd) { bd = d; best = a; } }
       b.task = { type: 'mine', a: best };
+      window.__minAst = best;
       b.x = best.x + 120; b.y = best.y; b.shootCd = 0;
-      return Math.floor(facState[b.color].credits);
     })()""")
     page.wait_for_timeout(2500)
-    check(page.evaluate("projectiles.some(pr => pr.owner === window.__miner)")
-          or page.evaluate("Math.floor(facState[window.__miner.color].credits)") > creds0,
+    check(page.evaluate("""!window.__minAst.alive || window.__minAst.hp < 2
+          || projectiles.some(pr => pr.owner === window.__miner)"""),
           'la IA dispara a asteroides (minería)')
 
     # guerra entre facciones IA: solo entonces se atacan entre ellas

@@ -494,9 +494,12 @@ addEventListener('keydown', e => {
     return;
   }
   keys[k] = true;
+  if (k === ' ') e.preventDefault();   // v1.5.2: ESPACIO es impulso — nunca debe activar el botón con foco
   if (k === 'enter') { chatInput.style.display = 'block'; chatInput.focus(); e.preventDefault(); }
   if (k === 'm' && inGame) backToMenu();
 });
+// v1.5.2: doble seguro — ningún botón queda enfocado tras el clic (ESPACIO lo reactivaría)
+addEventListener('click', e => { if (e.target && e.target.tagName === 'BUTTON') e.target.blur(); });
 addEventListener('keyup', e => { keys[e.key.toLowerCase()] = false; });
 const mouse = { x: 0, y: 0, down: false };
 addEventListener('mousemove', e => {
@@ -2081,14 +2084,16 @@ function refreshHangar() {
   $('hangar-qstat').textContent = q;
   $('hangar-fstat').textContent = fleetCount() + '/' + fleetMax();
   $('hangar-hstat').textContent = hangarShips.length + '/' + hangarMax();
-  $('hangar-where').textContent = nearCapital() ? '' : ' · ⚠ solo junto a tu capital';
+  // v1.5.2: construir y desplegar funcionan DESDE CUALQUIER LUGAR (órdenes por
+  // radio); solo PILOTAR sigue requiriendo atracar en la capital
+  $('hangar-where').textContent = nearCapital() ? '' : ' · ⚠ PILOTAR solo junto a tu capital';
   const near = nearCapital();
   hangarEl.querySelectorAll('button[data-build]').forEach(btn => {
     const s = shipDef(btn.dataset.build);
-    btn.disabled = !near || player.credits < s.cost || hangarShips.length + buildQueue.length >= hangarMax();
+    btn.disabled = player.credits < s.cost || hangarShips.length + buildQueue.length >= hangarMax();
   });
   hangarEl.querySelectorAll('button[data-hact]').forEach(btn => {
-    btn.disabled = btn.dataset.hact === 'pilot' ? !near : (!near || fleetCount() >= fleetMax());
+    btn.disabled = btn.dataset.hact === 'pilot' ? !near : fleetCount() >= fleetMax();
   });
   hangarEl.querySelectorAll('span[data-hp]').forEach(sp => {
     const b = bots.find(o => o.uid === +sp.dataset.hp);
@@ -2215,12 +2220,12 @@ function fleetCount() { return bots.filter(b => b.built).length; }
 function queueShip(type) {
   const s = shipDef(type);
   if (!playerCapital) return;
-  if (!nearCapital()) { chatSys('🏗️ Debes estar junto a tu capital para construir.'); return; }
+  // v1.5.2: las órdenes llegan por radio — ya no hace falta estar junto a la capital
   if (hangarShips.length + buildQueue.length >= hangarMax()) { chatSys('🏗️ Hangar lleno (' + hangarMax() + ' naves).'); return; }
   if (player.credits < s.cost) { chatSys('◈ Necesitas ' + s.cost + '◈ para construir un ' + s.name + '.'); return; }
   player.credits -= s.cost;
   buildQueue.push({ type, t: s.buildTime });
-  chatSys('🏗️ Construyendo ' + s.name + ' en la capital (' + s.buildTime + 's)…');
+  chatSys('🏗️ Orden por radio: construyendo ' + s.name + ' en la capital (' + s.buildTime + 's)…');
   saveGame();
 }
 function buildUpdate(dt) {
@@ -2253,14 +2258,14 @@ function makeWingman(type, role) {
   return b;
 }
 function deployShip(hi, role) {
-  if (!nearCapital()) { chatSys('🚀 Solo puedes desplegar naves junto a tu capital.'); return; }
+  // v1.5.2: despliegue remoto — la nave sale de la capital y viene sola
   if (fleetCount() >= fleetMax()) { chatSys('🚀 Flota activa al máximo (' + fleetMax() + ' naves: conquista planetas para ampliarla).'); return; }
   const type = hangarShips[hi];
   if (!type) return;
   hangarShips.splice(hi, 1);
   const b = makeWingman(type, role);
   const roleMsg = { defend: 'defendiendo la capital', garrison: 'en guarnición sobre tu capital', follow: 'en formación contigo' };
-  chatSys('🚀 ' + b.name + ' desplegado: ' + (roleMsg[role] || 'en formación contigo') +
+  chatSys('🚀 ' + b.name + ' desplegado' + (nearCapital() ? '' : ' por radio (sale de la capital)') + ': ' + (roleMsg[role] || 'en formación contigo') +
     ' (' + fleetCount() + '/' + fleetMax() + ')');
   saveGame();
 }
