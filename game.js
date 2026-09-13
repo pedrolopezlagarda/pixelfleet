@@ -67,29 +67,66 @@ const player = {
 };
 
 /* ---------- sprites pixel-art ---------- */
-const SHIP_SPRITE = [
-  '........',
-  '..#.....',
-  '.###....',
-  '#####...',
-  '#####.#.',
-  '#####...',
-  '.###....',
-  '..#.....',
-];
-function makeShipSprite(color) {
+// v1.5: un sprite distinto por TIPO de nave (antes todas eran la misma flecha)
+const SHIP_SPRITES = {
+  caza: [
+    '........',
+    '..#.....',
+    '.###....',
+    '#####...',
+    '#####.#.',
+    '#####...',
+    '.###....',
+    '..#.....',
+  ],
+  avispa: [   // dardo afilado y ligero
+    '........',
+    '....#...',
+    '..###...',
+    '########',
+    '########',
+    '..###...',
+    '....#...',
+    '........',
+  ],
+  acorazado: [   // mole ancha y blindada
+    '........',
+    '.####...',
+    '########',
+    '########',
+    '########',
+    '########',
+    '.####...',
+    '........',
+  ],
+  explorador: [   // alas largas con antena
+    '....#...',
+    '....#...',
+    '..####..',
+    '.######.',
+    '########',
+    '..####..',
+    '....#...',
+    '....#...',
+  ],
+};
+function makeShipSprite(color, type) {
+  const spr = SHIP_SPRITES[type] || SHIP_SPRITES.caza;
   const s = document.createElement('canvas');
   s.width = 8; s.height = 8;
   const c = s.getContext('2d');
   for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) {
-    c.fillStyle = SHIP_SPRITE[y][x] === '#' ? color : '#0a1628';
+    c.fillStyle = spr[y][x] === '#' ? color : '#0a1628';
     c.fillRect(x, y, 1, 1);
   }
-  c.fillStyle = '#ffffff'; c.fillRect(4, 3, 1, 1);
+  c.fillStyle = '#ffffff'; c.fillRect(4, 3, 1, 1);   // cabina
   return s;
 }
 const shipCache = {};
-const shipSprite = color => shipCache[color] || (shipCache[color] = makeShipSprite(color));
+const shipSprite = (color, type) => {
+  const k = color + '|' + (type || 'caza');
+  return shipCache[k] || (shipCache[k] = makeShipSprite(color, type));
+};
 
 /* planetas pixelados */
 const PLANET_PALETTES = [
@@ -1059,8 +1096,10 @@ function draw() {
       ctx.fillStyle = b.color;
       ctx.fillRect(b.x - 1.5 / z, b.y - 1.5 / z, 3 / z, 3 / z);
     } else {
-      const sz = b.built ? 3 * shipDef(b.shipType).size : 3;
-      drawShipWithHalo(b.x, b.y, b.angle, b.color, sz, 0.75, b.flash > 0);
+      // v1.5: opacidad completa, estela al andar, flash blanco y sprite por tipo
+      const sz = b.built ? 3.5 * shipDef(b.shipType).size : 3;
+      const type = b.built ? b.shipType : (b.pirate ? 'avispa' : 'caza');
+      drawShipWithHalo(b.x, b.y, b.angle, b.color, sz, 1, true, b.flash > 0, type);
     }
   }
 
@@ -1073,7 +1112,7 @@ function draw() {
       ctx.fillRect(r.x - 1.5 / z, r.y - 1.5 / z, 3 / z, 3 / z);
       continue;
     }
-    drawShipWithHalo(r.x, r.y, r.a, r.color, 4, 1, false);
+    drawShipWithHalo(r.x, r.y, r.a, r.color, 4, 1, true, false, 'caza');   // v1.5: estela también en remotos
     if (z >= 0.8) {
       ctx.fillStyle = r.color; ctx.font = (6 / z) + 'px monospace'; ctx.textAlign = 'center';
       ctx.fillText(r.name, r.x, r.y - 14 / z);
@@ -1109,7 +1148,7 @@ function draw() {
       ctx.beginPath(); ctx.arc(player.x, player.y, 6 / z, 0, TAU); ctx.stroke();
     } else {
       const moving = Math.abs(player.vx) + Math.abs(player.vy) > 30;
-      drawShipWithHalo(player.x, player.y, player.angle, player.color, 4 * getShipMod().size, player.invuln > 0 ? 0.5 + 0.4 * Math.sin(performance.now() / 60) : 1, moving || undefined, player.flash > 0);
+      drawShipWithHalo(player.x, player.y, player.angle, player.color, 4 * getShipMod().size, player.invuln > 0 ? 0.5 + 0.4 * Math.sin(performance.now() / 60) : 1, moving || undefined, player.flash > 0, player.ship);
       if (z >= 0.8) {
         ctx.fillStyle = '#ffd166'; ctx.font = (7 / z) + 'px monospace'; ctx.textAlign = 'center';
         ctx.fillText(player.name, player.x, player.y - 14 / z);
@@ -1157,7 +1196,8 @@ function draw() {
   }
 }
 
-function drawShipWithHalo(x, y, angle, color, size, alpha, thrust, flash) {
+function drawShipWithHalo(x, y, angle, color, size, alpha, thrust, flash, type) {
+  const k = size / 4;   // escala del sprite (size 4 = sprite 8×8)
   ctx.save();
   ctx.globalAlpha = alpha;
   // halo direccional
@@ -1165,14 +1205,24 @@ function drawShipWithHalo(x, y, angle, color, size, alpha, thrust, flash) {
   ctx.beginPath(); ctx.arc(x, y, size + 5, angle - 0.9, angle + 0.9); ctx.stroke();
   ctx.globalAlpha = alpha * 0.35;
   ctx.beginPath(); ctx.arc(x, y, size + 8, angle - 0.5, angle + 0.5); ctx.stroke();
-  ctx.globalAlpha = alpha;
   ctx.translate(x, y);
   ctx.rotate(angle);
-  if (flash) { ctx.globalAlpha = 0.4; }
-  ctx.drawImage(shipSprite(color), -4, -4);
+  // v1.5: estela de motor de verdad — llama parpadeante detrás de la nave al andar
   if (thrust) {
-    ctx.fillStyle = '#ffd166';
-    ctx.fillRect(-6 - rndi(0, 1), 0, 2, 1);
+    for (let i = 0; i < 3; i++) {
+      const len = (3 + i * 3 + rndi(0, 2)) * k;
+      ctx.globalAlpha = alpha * (0.95 - i * 0.3);
+      ctx.fillStyle = i === 0 ? '#fff6d0' : (i === 1 ? '#ffd166' : '#ff9f5a');
+      ctx.fillRect(-4 * k - len, -0.5 * k, len, 1 * k);
+    }
+  }
+  ctx.globalAlpha = alpha;
+  ctx.drawImage(shipSprite(color, type), -4 * k, -4 * k, 8 * k, 8 * k);
+  // v1.5: flash BLANCO al recibir daño (antes transparentaba la nave)
+  if (flash) {
+    ctx.globalAlpha = 0.7;
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(-4 * k, -4 * k, 8 * k, 8 * k);
   }
   ctx.restore();
 }

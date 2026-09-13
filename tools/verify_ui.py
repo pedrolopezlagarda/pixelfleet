@@ -222,6 +222,8 @@ with sync_playwright() as pw:
           and page.evaluate("hangarShips.filter(t => t === 'caza').length") == 2,
           'PILOTAR: pilotas la avispa y tu caza pasa al hangar')
     check('Avispa' in page.locator('#hangar-current').inner_text(), 'panel muestra «Pilotando: Avispa»')
+    check(page.evaluate("shipSprite('#ffffff','caza') !== shipSprite('#ffffff','avispa')"),
+          'sprites distintos por tipo de nave (v1.5)')
     page.screenshot(path=str(SHOTS / 'ui_hangar.png'))
 
     # ===== 5b. control RTS de flota (v0.7) =====
