@@ -520,6 +520,8 @@ addEventListener('mouseup',   () => { mouse.down = false; if (selectBox) selFini
 // zoom estratégico con la rueda del ratón
 addEventListener('wheel', e => {
   if (!inGame) return;
+  // v1.6.1: hacer scroll DENTRO de un menú/panel no debe cambiar el zoom del juego
+  if (e.target.closest && e.target.closest('.game-panel, #chat, #board')) return;
   cam.zoomTarget = clamp(cam.zoomTarget * Math.pow(1.2, -e.deltaY / 100), ZMIN, ZMAX);
 }, { passive: true });
 
@@ -608,6 +610,9 @@ function damageShip(ship, dmg, killer) {
   }
   ship.hp -= dmg;
   ship.flash = 0.15;
+  // v1.6.1: aviso en pantalla cuando TE disparan (cooldown para no spamear)
+  if (ship === player && killer && killer !== player)
+    notify('⚠️ ¡Bajo fuego enemigo' + (killer.name ? ' de ' + killer.name : '') + '!', 'danger', 'p-hit', 4);
   // diplomacia: que te disparen empeora la relación con esa facción
   if (ship === player && killer && killer.color && killer !== player) {
     changeStanding(killer.color, -6);
@@ -634,10 +639,12 @@ function damageShip(ship, dmg, killer) {
       player.respawnT = 3;
       player.vx = player.vy = 0;
       chatSys('💥 Has sido destruido' + (killer ? ' por ' + killer.name : '') + '. Nave perdida. Reapareciendo…');
+      notify('💥 Tu nave ha sido destruida', 'danger');
     } else {
       if (ship.built) {
         const sn = (SHIPS.find(s => s.id === ship.shipType) || SHIPS[0]).name;
         chatSys('💥 Has perdido a ' + ship.name + ' (' + sn + '). Las naves construidas no se reponen.');
+        notify('💥 ' + ship.name + ' destruido', 'danger');   // v1.6.1
       }
       ship.respawnT = rnd(3, 6);
       if (killer === player) {
@@ -857,6 +864,8 @@ function update(dt) {
             dead = true; break;
           }
           p.shield -= pr.dmg || 1;   // v1.4: el bláster pesado desgasta más escudo
+          // v1.6.1: aviso en pantalla si atacan un planeta TUYO (cooldown por planeta)
+          if (p.owner === player.color) notify('⚠️ ¡' + p.name + ' bajo ataque!', 'warn', 'pl-' + p.name, 8);
           // v0.8: dañar el escudo de una facción cuenta como provocación tuya
           if (pr.owner === player || (pr.owner && pr.owner.built)) playerAggro[p.owner] = 45;
           particles.push({ x: pr.x, y: pr.y, vx: rnd(-50, 50), vy: rnd(-50, 50), life: 0.25, color: p.owner });
@@ -907,9 +916,11 @@ function update(dt) {
           if (faction === player.color) {
             player.credits += 10;
             chatSys('🪐 Has conquistado ' + p.name + ' para tu facción (+10◈)');
+            notify('🪐 ' + p.name + ' conquistado (+10◈)', 'good');   // v1.6.1
           } else if (was === player.color) {
             changeStanding(faction, -25);
             chatSys('⚠️ ' + p.name + ' ha caído en manos de la facción ' + faction);
+            notify('🪐 ¡' + p.name + ' PERDIDO!', 'danger');   // v1.6.1
           } else if (p.capital) {
             // v0.8: la caída de una capital enemiga es noticia galáctica
             chatSys('⚠️ La CAPITAL de ' + facName(was) + ' ha caído en manos de ' + facName(faction) + '.');
@@ -1316,6 +1327,26 @@ function chatSys(text) {
   chatLog.appendChild(d);
   while (chatLog.children.length > 30) chatLog.removeChild(chatLog.firstChild);
   chatLog.scrollTop = chatLog.scrollHeight;
+}
+
+/* ---------- v1.6.1: notificaciones en pantalla ----------
+   Avisos grandes arriba del todo: ataques a ti/tus planetas, bajas de tu
+   flota, construcción completada… No sustituyen al chat: son lo urgente. */
+const notifyEl = document.getElementById('notify');
+const alertCd = {};   // cooldown por clave para no spamear (p. ej. un planeta bajo fuego)
+function notify(text, kind = 'info', cdKey = null, cdSecs = 0) {
+  if (!notifyEl) return;
+  if (cdKey) {
+    const now = performance.now() / 1000;
+    if (alertCd[cdKey] && now - alertCd[cdKey] < cdSecs) return;
+    alertCd[cdKey] = now;
+  }
+  const t = document.createElement('div');
+  t.className = 'toast ' + kind;
+  t.textContent = text;
+  notifyEl.appendChild(t);
+  while (notifyEl.children.length > 4) notifyEl.removeChild(notifyEl.firstChild);
+  setTimeout(() => { t.classList.add('out'); setTimeout(() => t.remove(), 550); }, 5200);
 }
 function sendChat() {
   const t = chatInput.value.trim();
@@ -2053,18 +2084,18 @@ function renderHangar() {
   $('hangar-fleet').innerHTML = fleet.length ? fleet.map(b =>
     `<div class="hangar-item"><div class="info"><b>${b.name}</b><span>${shipDef(b.shipType).name} · <span data-hp="${b.uid}">${Math.ceil(b.hp)}</span> HP · ${roleLabel(b)}</span></div>
      <div class="acts">
-       <button data-fact="follow" data-uid="${b.uid}" ${b.role === 'follow' ? 'disabled' : ''}>SEGUIR</button>
-       <button data-fact="defend" data-uid="${b.uid}" ${b.role === 'defend' ? 'disabled' : ''}>DEFENDER</button>
-       <button data-fact="recall" data-uid="${b.uid}">RECOGER</button>
+       <button data-fact="follow" data-uid="${b.uid}" ${b.role === 'follow' ? 'disabled' : ''}>📡 SEGUIR</button>
+       <button data-fact="defend" data-uid="${b.uid}" ${b.role === 'defend' ? 'disabled' : ''}>🛡️ DEFENDER</button>
+       <button data-fact="recall" data-uid="${b.uid}">📥 RECOGER</button>
      </div></div>`).join('')
     : '<div class="hangar-empty">Sin naves desplegadas</div>';
   $('hangar-store').innerHTML = hangarShips.length ? hangarShips.map((t, i) =>
     `<div class="hangar-item"><div class="info"><b>${shipDef(t).name}</b><span>${shipDef(t).desc}</span></div>
      <div class="acts">
-       <button data-hact="follow" data-hi="${i}">SEGUIRME</button>
-       <button data-hact="garrison" data-hi="${i}">GUARNICIÓN</button>
-       <button data-hact="defend" data-hi="${i}">DEFENDER</button>
-       <button data-hact="pilot" data-hi="${i}">PILOTAR</button>
+       <button data-hact="follow" data-hi="${i}">🚀 SEGUIRME</button>
+       <button data-hact="garrison" data-hi="${i}">🏰 GUARNICIÓN</button>
+       <button data-hact="defend" data-hi="${i}">🛡️ DEFENDER</button>
+       <button data-hact="pilot" data-hi="${i}">🧑‍🚀 PILOTAR</button>
      </div></div>`).join('')
     : '<div class="hangar-empty">Hangar vacío: construye naves arriba</div>';
   hangarEl.querySelectorAll('button[data-build]').forEach(btn => btn.onclick = () => { queueShip(btn.dataset.build); renderHangar(); });
@@ -2262,6 +2293,7 @@ function buildUpdate(dt) {
   const item = buildQueue.shift();
   hangarShips.push(item.type);   // la nave va AL HANGAR: la despliegas tú
   chatSys('🛰️ ' + shipDef(item.type).name + ' construido y en el hangar (' + hangarShips.length + '/' + hangarMax() + ')');
+  notify('🛰️ ' + shipDef(item.type).name + ' listo en el hangar', 'good');   // v1.6.1
   // evento discreto: si el hangar está abierto, se re-renderiza (regla v0.5.3b)
   if (typeof hangarEl !== 'undefined' && !hangarEl.classList.contains('hidden')) renderHangar();
 }
@@ -2626,6 +2658,8 @@ function toggleGamePanel(which) {
 function closeAllPanels() {
   for (const el of [shopEl, diploEl, contractsEl, hangarEl, empireEl]) el.classList.add('hidden');
 }
+// v1.6.1: botón ✕ para cerrar cada panel (además de su tecla y ESC)
+document.querySelectorAll('.panel-x').forEach(b => b.onclick = () => b.parentElement.classList.add('hidden'));
 const tbButtons = Array.from(document.querySelectorAll('#toolbar button[data-panel]'));
 tbButtons.forEach(b => { b.onclick = () => toggleGamePanel(b.dataset.panel); });
 const tbChat = document.getElementById('tb-chat');

@@ -49,6 +49,18 @@ muestra el atajo de teclado). No hace falta memorizar nada.
 
 ## Sistemas del juego
 
+### 🔔 Notificaciones y menús cómodos (v1.6.1)
+- **Avisos en pantalla** (arriba, grandes): te disparan, atacan un planeta tuyo,
+  pierdes un planeta o una nave, una construcción termina… Se apilan hasta 4 y se
+  desvanecen solos (los ataques repetidos al mismo sitio tienen enfriamiento para
+  no spamear). El chat sigue contándolo todo; las notificaciones son lo urgente.
+- **Botón ✕ en todos los paneles** (tienda, diplomacia, contratos, hangar,
+  imperio) — además de su tecla y ESC.
+- **El scroll dentro de un menú ya no hace zoom** en el juego (la rueda sobre el
+  canvas sigue funcionando igual).
+- Hangar más legible: secciones con fondo, botones con iconos (🚀 SEGUIRME,
+  🛡️ DEFENDER, 📥 RECOGER, 🧑‍🚀 PILOTAR) y el botón AMPLIAR destacado en dorado.
+
 ### 🏰 Capital y preparación (v0.5)
 - Al entrar se elige tu **capital**: planeta propio con **escudo de 100 pts**, lejos de
   otras facciones. **Empiezas solo**: ningún bot tiene su hogar cerca ni aparece en tu zona.
@@ -272,7 +284,7 @@ Posiciones a 10 Hz, disparos y chat retransmitidos **por sala**.
 | `style.css` | Estilo retro pixelado |
 | `game.js` | Motor completo + sistemas v0.3/v0.4/v0.5/v0.6 |
 | `server.js` | Servidor WebSocket multijugador con salas |
-| `tools/verify_ui.py` | Test E2E real (Playwright): 145 checks — menús, clics, tienda/tecnología, flota, hangar por niveles, RTS, facciones IA, niebla, economía, eventos, victoria, persistencia, zoom |
+| `tools/verify_ui.py` | Test E2E real (Playwright): 150 checks — menús, clics, tienda/tecnología, flota, hangar por niveles, notificaciones, RTS, facciones IA, niebla, economía, eventos, victoria, persistencia, zoom |
 | `README.md` | Este documento |
 
 ### Tests E2E

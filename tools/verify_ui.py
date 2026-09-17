@@ -228,11 +228,21 @@ with sync_playwright() as pw:
           'nv.2: flota 5 · almacén 8')
     check('Hangar ampliado a nv.2' in page.locator('#chat-log').inner_text(), 'ampliación anunciada en el chat')
     check('2/6' in page.locator('#hangar-lvl').inner_text(), 'panel muestra el nivel de hangar')
-    # los planetas ya NO amplían la flota
-    page.evaluate("planets.find(p => !p.owner && p !== playerCapital).owner = player.color")
+    # los planetas ya NO amplían la flota (ojo: un planeta propio DA VISIÓN — elegir
+    # el neutral más lejano de toda capital enemiga para no contaminar la niebla)
+    page.evaluate("""(() => {
+      const caps = planets.filter(p => p.capital && p.owner && p.owner !== player.color);
+      let best = null, bd = -1;
+      for (const p of planets) {
+        if (p.owner || p === playerCapital) continue;
+        const d = Math.min(...caps.map(c => (p.x - c.x) ** 2 + (p.y - c.y) ** 2));
+        if (d > bd) { bd = d; best = p; }
+      }
+      window.__tmpP = best; best.owner = player.color;
+    })()""")
     page.wait_for_timeout(250)
     check(page.evaluate("fleetMax()") == 5, 'conquistar un planeta NO cambia el tope de flota (v1.6)')
-    page.evaluate("planets.forEach(p => { if (p !== playerCapital && p.owner === player.color) p.owner = null })")
+    page.evaluate("window.__tmpP.owner = null")
 
     # ===== v1.5.2: órdenes por radio + ESPACIO no activa botones =====
     print('— v1.5.2: radio y ESPACIO —')
@@ -258,6 +268,39 @@ with sync_playwright() as pw:
     check(page.locator('#shop').is_visible(), 'ESPACIO ya NO reactiva el botón con foco (v1.5.2)')
     page.keyboard.press('Escape')
     page.wait_for_timeout(150)
+
+    # ===== v1.6.1: scroll en menús sin zoom, botón ✕ y notificaciones =====
+    print('— v1.6.1: scroll/zoom, ✕ y notificaciones —')
+    page.click('#toolbar button[data-panel="hangar"]')
+    page.wait_for_timeout(300)
+    z0 = page.evaluate("cam.zoomTarget")
+    page.hover('#hangar')
+    page.mouse.wheel(0, -400)
+    page.wait_for_timeout(250)
+    check(page.evaluate("cam.zoomTarget") == z0, 'scroll DENTRO del hangar NO hace zoom')
+    # el hangar tapa el centro del canvas: buscar un punto libre donde elementFromPoint sea el canvas
+    pt = page.evaluate("""(() => {
+      const c = document.getElementById('canvas');
+      for (let y = 40; y < innerHeight; y += 50)
+        for (let x = 40; x < innerWidth; x += 70)
+          if (document.elementFromPoint(x, y) === c) return { x, y };
+      return null;
+    })()""")
+    page.mouse.move(pt['x'], pt['y'])
+    page.mouse.wheel(0, -400)
+    page.wait_for_timeout(250)
+    check(page.evaluate("cam.zoomTarget") > z0, 'scroll sobre el canvas SÍ hace zoom')
+    page.evaluate("cam.zoomTarget = 1; cam.zoom = 1")
+    page.evaluate("for (let i = 0; i < 6; i++) notify('Aviso ' + i, 'warn')")
+    page.wait_for_timeout(150)
+    check(page.locator('#notify .toast').count() == 4, 'notificaciones visibles (máx. 4 apiladas)')
+    page.evaluate("damageShip(player, 1, {name: 'Pirata', color: '#888888', pirate: true})")
+    page.wait_for_timeout(150)
+    check('Bajo fuego enemigo' in page.locator('#notify').inner_text(),
+          'recibir daño muestra aviso «bajo fuego enemigo»')
+    page.click('#hangar .panel-x')
+    page.wait_for_timeout(200)
+    check(not page.locator('#hangar').is_visible(), 'el botón ✕ cierra el panel')
 
     print('— hangar: PILOTAR —')
     page.click('#toolbar button[data-panel="hangar"]')   # reabrir (la sección anterior cerró los paneles)
@@ -398,13 +441,14 @@ with sync_playwright() as pw:
       const b = bots.find(x => x.imp);
       window.__conq = b;
       facState[b.color].aiT = 999;   // que no le reasignen la tarea durante el check
-      // el planeta neutral más alejado de otras naves imperiales (sin disputas)
+      // el planeta neutral más alejado de TODAS las naves (piratas incluidos) y del
+      // jugador: cualquier nave cerca lo deja «contestado» y la conquista no arranca
       let p = null, best = -1;
       for (const q of planets) {
         if (q.owner) continue;
-        let dmin = 1e18;
+        let dmin = (player.x-q.x)**2 + (player.y-q.y)**2;
         for (const o of bots) {
-          if (o === b || !o.imp || !o.alive) continue;
+          if (o === b || !o.alive) continue;
           const d = (o.x-q.x)**2 + (o.y-q.y)**2;
           if (d < dmin) dmin = d;
         }

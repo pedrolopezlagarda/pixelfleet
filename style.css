@@ -113,6 +113,23 @@ body {
   box-shadow: 0 0 0 4px #05060e; padding: 14px 16px;
 }
 .game-panel h3 { color: #ffd166; letter-spacing: 3px; font-size: 15px; margin-bottom: 8px; }
+/* v1.6.1: botón de cierre visible en cada panel */
+.panel-x { position: absolute; top: 8px; right: 10px; font-family: inherit; font-size: 13px;
+  background: #101a33; color: #ff6b8a; border: 2px solid #ff6b8a; cursor: pointer; padding: 2px 9px; }
+.panel-x:hover { background: #ff6b8a; color: #05060e; }
+
+/* ===== v1.6.1: notificaciones en pantalla ===== */
+#notify { position: fixed; top: 56px; left: 50%; transform: translateX(-50%);
+  z-index: 10; display: flex; flex-direction: column; gap: 6px; align-items: center;
+  pointer-events: none; max-width: 92vw; }
+.toast { font-size: 14px; letter-spacing: 1px; padding: 8px 16px; text-align: center;
+  background: rgba(5,6,14,.94); border: 2px solid; text-shadow: 2px 2px 0 #000;
+  transition: opacity .5s; }
+.toast.info   { color: #7ef9ff; border-color: #7ef9ff; }
+.toast.good   { color: #8aff80; border-color: #8aff80; }
+.toast.warn   { color: #ffd166; border-color: #ffd166; }
+.toast.danger { color: #ff6b8a; border-color: #ff6b8a; }
+.toast.out { opacity: 0; }
 .panel-sub { font-size: 12px; color: #7ef9ff; margin-bottom: 10px; }
 .panel-hint { font-size: 11px; color: #44557a; text-align: center; margin-top: 10px; }
 .panel-hint b { color: #8fa8d0; }
@@ -167,21 +184,28 @@ body {
 
 /* Hangar */
 .hangar-item { display: flex; justify-content: space-between; align-items: center;
-  padding: 8px 4px; border-bottom: 1px solid #1a2a4a; font-size: 12px; }
-.hangar-item .info b { color: #e8f0ff; }
-.hangar-item .info span { color: #8fa8d0; display: block; font-size: 10px; }
+  padding: 9px 6px; border-bottom: 1px solid #1a2a4a; font-size: 12px; gap: 8px; }
+.hangar-item .info b { color: #e8f0ff; font-size: 13px; }
+.hangar-item .info span { color: #8fa8d0; display: block; font-size: 11px; }
 .hangar-item button { font-family: inherit; font-size: 11px; padding: 5px 10px; cursor: pointer;
   background: #101a33; color: #7ef9ff; border: 2px solid #7ef9ff; }
 .hangar-item button:hover { background: #7ef9ff; color: #05060e; }
 .hangar-item.selected { background: rgba(126,249,255,.08); }
 .hangar-item.selected button { color: #8aff80; border-color: #8aff80; }
 /* v0.6: filas de flota con varios botones de rol */
-.hangar-item .acts { display: flex; gap: 4px; flex-shrink: 0; }
-.hangar-item .acts button { font-size: 9px; padding: 4px 6px; }
+.hangar-item .acts { display: flex; gap: 4px; flex-shrink: 0; flex-wrap: wrap; justify-content: flex-end; }
+.hangar-item .acts button { font-size: 10px; padding: 5px 7px; }
 .hangar-item button:disabled { opacity: .3; cursor: default; }
 .hangar-item button:disabled:hover { background: #101a33; color: #7ef9ff; }
 .hangar-empty { color: #44557a; font-size: 11px; padding: 6px 4px; }
 #hangar-qstat, #hangar-fstat, #hangar-hstat { color: #7ef9ff; letter-spacing: 0; }
+/* v1.6.1: hangar más legible — secciones con fondo y botón de ampliar destacado */
+#hangar .panel-sub2 { background: #101a33; padding: 5px 8px; color: #ffd166; }
+#hangar-upg { font-family: inherit; font-size: 11px; padding: 4px 10px; cursor: pointer;
+  background: #2a2408; color: #ffd166; border: 2px solid #ffd166; margin-left: 8px; }
+#hangar-upg:hover { background: #ffd166; color: #05060e; }
+#hangar-upg:disabled { opacity: .3; cursor: default; }
+#hangar-upg:disabled:hover { background: #2a2408; color: #ffd166; }
 #hangar-where { color: #ff9f5a; }
 #btn-wipe { color: #ff6b8a; border-color: #ff6b8a; box-shadow: 0 6px 0 #4a1220; }
 #btn-wipe:hover { background: #ff6b8a; color: #05060e; box-shadow: 0 4px 0 #4a1220; }

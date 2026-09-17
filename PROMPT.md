@@ -205,6 +205,11 @@ El roadmap v0.5 quedó completo en v1.2 (A-F + G/H). Nuevas líneas:
       (150/300/450/600/750◈): cada nivel da **+2 flota activa y +2 almacén**
       (de 3/6 en nv.1 a 13/16 en nv.6). El límite de la armada es la economía.
       Migración de saves viejos: nivel equivalente al antiguo tope por planetas.
+- [x] **v1.6.1 — UX: notificaciones + menús cómodos**: avisos grandes arriba
+      (te disparan, atacan/pierdes un planeta, pierdes una nave, construcción
+      lista; máx. 4 apilados, cooldown anti-spam); botón ✕ en todos los paneles;
+      el scroll dentro de un menú ya NO hace zoom; hangar más legible (secciones
+      con fondo, botones con iconos, AMPLIAR destacado).
 
 ## RESTRICCIONES TÉCNICAS
 - Vanilla JS + canvas, mismo estilo pixel-art. Nada de frameworks pesados.
