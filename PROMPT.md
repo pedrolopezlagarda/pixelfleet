@@ -56,8 +56,8 @@ los 10 segundos.
       Test E2E real con Playwright en `tools/verify_ui.py`.
 - [x] **v0.6 — Flota real y persistencia total**: las naves se **construyen** (los 4
       tipos con coste y tiempo), van al **hangar** y por cada una eliges **SEGUIRME /
-      DEFENDER CAPITAL / RECOGER / PILOTAR** (flota activa = 2 + 1 por planeta propio,
-      hangar máx. 10).
+      DEFENDER CAPITAL / RECOGER / PILOTAR**. *(v1.6: el tope de flota ya no son los
+      planetas — es el nivel de hangar, ampliable con ◈)*
       **Muerte real** también para tu nave (rotación desde el hangar o caza de
       emergencia). Ningún bot aleatorio es de tu color: toda nave aliada la creas tú.
       **Mundo determinista** (planetario con seed) + **save v2 completo**: jugador,
@@ -200,6 +200,11 @@ El roadmap v0.5 quedó completo en v1.2 (A-F + G/H). Nuevas líneas:
       se llamaba). Además, la minería de los wingmen ahora también da ◈ al jugador.
 - [ ] **Asedios con defensas orbitales** y **misiones-historia** (siguientes,
       pedido de Pedro).
+- [x] **v1.6 — Hangar por niveles**: la flota activa ya NO depende de los
+      planetas conquistados. El hangar tiene 5 ampliaciones comprables
+      (150/300/450/600/750◈): cada nivel da **+2 flota activa y +2 almacén**
+      (de 3/6 en nv.1 a 13/16 en nv.6). El límite de la armada es la economía.
+      Migración de saves viejos: nivel equivalente al antiguo tope por planetas.
 
 ## RESTRICCIONES TÉCNICAS
 - Vanilla JS + canvas, mismo estilo pixel-art. Nada de frameworks pesados.

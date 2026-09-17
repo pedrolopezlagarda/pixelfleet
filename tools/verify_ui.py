@@ -209,6 +209,31 @@ with sync_playwright() as pw:
     check(page.evaluate("fleetCount()") == 0 and page.evaluate("hangarShips.length") == 1,
           'RECOGER devuelve la nave al hangar')
 
+    # ===== v1.6: hangar por niveles (la flota ya NO depende de planetas) =====
+    print('— v1.6: ampliar hangar con ◈ —')
+    check(page.evaluate("fleetMax()") == 3 and page.evaluate("hangarMax()") == 6,
+          'hangar nv.1: flota 3 · almacén 6 (sin conquistar nada)')
+    page.evaluate("player.credits = 0")
+    page.wait_for_timeout(250)
+    check(page.locator('#hangar-upg').is_disabled(), 'sin ◈ el botón AMPLIAR está desactivado')
+    page.evaluate("player.credits = 500")
+    page.wait_for_timeout(250)
+    check(not page.locator('#hangar-upg').is_disabled(), 'con ◈ el botón AMPLIAR se activa')
+    page.click('#hangar-upg')
+    page.wait_for_timeout(300)
+    credits_now = page.evaluate("Math.floor(player.credits)")
+    check(page.evaluate("player.hangarLvl") == 1 and 350 <= credits_now <= 356,
+          f'ampliar cuesta 150◈ y sube a nv.2 (quedan {credits_now}◈, +ingresos del tiempo real)')
+    check(page.evaluate("fleetMax()") == 5 and page.evaluate("hangarMax()") == 8,
+          'nv.2: flota 5 · almacén 8')
+    check('Hangar ampliado a nv.2' in page.locator('#chat-log').inner_text(), 'ampliación anunciada en el chat')
+    check('2/6' in page.locator('#hangar-lvl').inner_text(), 'panel muestra el nivel de hangar')
+    # los planetas ya NO amplían la flota
+    page.evaluate("planets.find(p => !p.owner && p !== playerCapital).owner = player.color")
+    page.wait_for_timeout(250)
+    check(page.evaluate("fleetMax()") == 5, 'conquistar un planeta NO cambia el tope de flota (v1.6)')
+    page.evaluate("planets.forEach(p => { if (p !== playerCapital && p.owner === player.color) p.owner = null })")
+
     # ===== v1.5.2: órdenes por radio + ESPACIO no activa botones =====
     print('— v1.5.2: radio y ESPACIO —')
     page.evaluate("player.x = playerCapital.x + 3000; player.y = playerCapital.y; player.vx = player.vy = 0; cam.x = player.x; cam.y = player.y;")
@@ -617,7 +642,7 @@ with sync_playwright() as pw:
     fog0 = page.evaluate("explored.reduce((a, v) => a + v, 0)")
     page.evaluate("saveGame()")
     saved = page.evaluate("({credits: Math.floor(player.credits), bots: bots.filter(b => !b.pirate).length, "
-                          "hangar: hangarShips.join(','), ship: player.ship, "
+                          "hangar: hangarShips.join(','), ship: player.ship, hangarLvl: player.hangarLvl, "
                           "kills: player.kills, motor: player.upgrades.motor})")   # los piratas no se guardan (evento transitorio)
     page.reload()
     page.wait_for_timeout(500)
@@ -631,6 +656,9 @@ with sync_playwright() as pw:
     check(page.evaluate("hangarShips.join(',')") == saved['hangar'], f"hangar restaurado ({saved['hangar']})")
     check(page.evaluate("player.ship") == saved['ship'], f"nave actual restaurada ({saved['ship']})")
     check(page.evaluate("player.upgrades.motor") == saved['motor'], 'mejoras restauradas')
+    check(page.evaluate("player.hangarLvl") == saved['hangarLvl']
+          and page.evaluate("fleetMax()") == 3 + 2 * saved['hangarLvl'],
+          f"nivel de hangar restaurado (nv.{saved['hangarLvl'] + 1}, v1.6)")
     check(page.evaluate(f"standings['{fac}']") <= -30, 'guerra declarada sigue en pie tras recargar')
     check(page.evaluate("playerCapital !== null && playerCapital.capital === true"),
           'capital restaurada por índice')

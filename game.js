@@ -62,6 +62,7 @@ const player = {
   invuln: 2, respawnT: 0, shootCd: 0,
   upgrades: { motor: 0, cadencia: 0, blindaje: 0, deposito: 0 },
   tech: {},                   // v1.4: tecnologías de nivel 2 (excluyentes por rama)
+  hangarLvl: 0,               // v1.6: nivel de hangar — limita flota y almacén (se compra con ◈)
   deflCd: 0,                  // v1.4: cooldown del escudo deflector
   ship: 'caza',                 // modelo actual (catálogo SHIPS, v0.6)
 };
@@ -170,6 +171,7 @@ const planets = [];
 for (let i = 0; i < 64; i++) {   // v1.0: 64 planetas (el mundo creció a 12000×12000)
   const r = rndiW(24, 70);
   planets.push({
+    idx: i,           // v1.6: índice estable (las defensas orbitales referencian por índice)
     x: rndW(r * 2, WORLD.w - r * 2),
     y: rndW(r * 2, WORLD.h - r * 2),
     r,
@@ -1467,6 +1469,7 @@ function newGameInit() {
   // v0.6: partida nueva — 1 caza (tu nave), hangar vacío, fondos iniciales
   player.ship = 'caza';
   player.tech = {}; player.deflCd = 0;   // v1.4
+  player.hangarLvl = 0;   // v1.6: hangar nv.1 en partida nueva
   hangarShips.length = 0;
   buildQueue.length = 0;
   applyUpgrades();
@@ -1647,6 +1650,7 @@ function saveGame() {
         credits: Math.floor(player.credits), mineral: Math.floor(player.mineral), kills: player.kills, deaths: player.deaths,
         upgrades: player.upgrades, ship: player.ship,
         tech: player.tech,   // v1.4
+        hangarLvl: player.hangarLvl,   // v1.6
       },
       capitalIdx: planets.indexOf(playerCapital),
       prepT: Math.max(0, prepT),
@@ -1692,6 +1696,10 @@ function applySave(d) {
   player.deaths = d.player.deaths || 0;
   Object.assign(player.upgrades, d.player.upgrades || {});
   player.tech = d.player.tech || {};   // v1.4
+  // v1.6: nivel de hangar. Migración de saves viejos: nivel equivalente al
+  // antiguo tope por planetas (2 + planetas propios ≈ 3 + 2·nivel).
+  player.hangarLvl = d.player.hangarLvl ?? Math.max(0, Math.min(HANGAR_LVL_MAX,
+    Math.ceil(((d.planets || []).filter(sp => sp.owner === player.color).length - 1) / 2)));
   player.ship = d.player.ship || 'caza';
   // mundo: reset dinámico sobre el universo determinista
   for (const p of planets) {
@@ -2070,6 +2078,7 @@ function renderHangar() {
     if (btn.dataset.hact === 'pilot') pilotShip(i); else deployShip(i, btn.dataset.hact);
     renderHangar();
   });
+  $('hangar-upg').onclick = () => upgradeHangar();   // v1.6 (upgradeHangar ya re-renderiza)
   refreshHangar();
 }
 // actualiza SOLO textos y estados disabled (los clics nunca se pierden)
@@ -2084,6 +2093,11 @@ function refreshHangar() {
   $('hangar-qstat').textContent = q;
   $('hangar-fstat').textContent = fleetCount() + '/' + fleetMax();
   $('hangar-hstat').textContent = hangarShips.length + '/' + hangarMax();
+  // v1.6: nivel de hangar y botón de ampliación (solo texto/disabled por frame)
+  $('hangar-lvl').textContent = (player.hangarLvl + 1) + '/' + (HANGAR_LVL_MAX + 1);
+  const upgBtn = $('hangar-upg');
+  if (player.hangarLvl >= HANGAR_LVL_MAX) { upgBtn.textContent = 'MÁXIMO'; upgBtn.disabled = true; }
+  else { upgBtn.textContent = 'AMPLIAR (' + hangarUpgCost() + '◈)'; upgBtn.disabled = player.credits < hangarUpgCost(); }
   // v1.5.2: construir y desplegar funcionan DESDE CUALQUIER LUGAR (órdenes por
   // radio); solo PILOTAR sigue requiriendo atracar en la capital
   $('hangar-where').textContent = nearCapital() ? '' : ' · ⚠ PILOTAR solo junto a tu capital';
@@ -2199,16 +2213,29 @@ function drawJoystick() {
 /* =========================================================
    v0.6 — FLOTA REAL CONSTRUIBLE
    Las naves se construyen en la capital (cola con cuenta
-   atrás), van al HANGAR (máx. 10) y desde ahí se despliegan
-   con un rol: SEGUIRME / DEFENDER CAPITAL (flota activa limitada
-   por tu imperio: 2 + 1 por planeta propio). RECOGER las devuelve
+   atrás), van al HANGAR y desde ahí se despliegan
+   con un rol: SEGUIRME / DEFENDER CAPITAL. La flota activa y el
+   almacén los limita el NIVEL DE HANGAR (v1.6: se amplía con ◈,
+   ya no por planetas conquistados). RECOGER las devuelve
    al hangar. PILOTAR te cambia
    a esa nave. Si caen, se pierden de verdad (built/gone).
    ========================================================= */
-const HANGAR_MAX = 10;
-function hangarMax() { return HANGAR_MAX + (player.tech.hangarplus ? 4 : 0); }   // v1.4
-// la flota activa escala con tu imperio: 2 + 1 por planeta propio
-function fleetMax() { return 2 + planets.filter(p => p.owner === player.color).length + (player.tech.hangarplus ? 2 : 0); }   // v1.4: hangar ampliado
+const HANGAR_MAX = 6;        // almacén base (hangar nv.1)
+const HANGAR_LVL_MAX = 5;    // ampliaciones comprables (nv.6 = máximo)
+const hangarUpgCost = () => 150 * (player.hangarLvl + 1);   // 150/300/450/600/750◈
+function hangarMax() { return HANGAR_MAX + 2 * player.hangarLvl + (player.tech.hangarplus ? 4 : 0); }   // v1.4/v1.6
+// v1.6: la flota activa la limita el nivel de hangar (se compra con ◈), no los planetas
+function fleetMax() { return 3 + 2 * player.hangarLvl + (player.tech.hangarplus ? 2 : 0); }
+function upgradeHangar() {
+  if (player.hangarLvl >= HANGAR_LVL_MAX) return;
+  const cost = hangarUpgCost();
+  if (player.credits < cost) { chatSys('◈ Necesitas ' + cost + '◈ para ampliar el hangar.'); return; }
+  player.credits -= cost;
+  player.hangarLvl++;
+  chatSys('🏗️ Hangar ampliado a nv.' + (player.hangarLvl + 1) + ': flota ' + fleetMax() + ' · almacén ' + hangarMax() + '.');
+  saveGame();
+  renderHangar();
+}
 let hangarShips = [];      // ids de SHIPS guardados en la capital
 const buildQueue = [];     // {type, t} — segundos restantes del primero
 let wingUid = 0;
@@ -2259,7 +2286,7 @@ function makeWingman(type, role) {
 }
 function deployShip(hi, role) {
   // v1.5.2: despliegue remoto — la nave sale de la capital y viene sola
-  if (fleetCount() >= fleetMax()) { chatSys('🚀 Flota activa al máximo (' + fleetMax() + ' naves: conquista planetas para ampliarla).'); return; }
+  if (fleetCount() >= fleetMax()) { chatSys('🚀 Flota activa al máximo (' + fleetMax() + ' naves: amplía el hangar con H).'); return; }
   const type = hangarShips[hi];
   if (!type) return;
   hangarShips.splice(hi, 1);

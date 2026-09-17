@@ -1,4 +1,4 @@
-# 🚀 PIXEL FLEET — v1.4
+# 🚀 PIXEL FLEET — v1.6
 
 Juego de **estrategia espacial** vista cenital, pixel-art, multijugador.
 **Todas las facciones empiezan de cero**: su planeta capital y **una sola nave**,
@@ -77,12 +77,15 @@ imperio son siempre de otros colores). Desde el hangar (H), junto a tu capital:
 | Acorazado | +9 HP, lenta, fuego pesado | 300◈ | 40 s |
 
 - La cola de construcción trabaja en la capital; al terminar, la nave va **al hangar**
-  (máx. 10 guardadas) — no sale sola.
+  — no sale sola.
 - Por cada nave decides: **SEGUIRME** (escolta en formación que dispara a tus
   agresores), **DEFENDER CAPITAL** (patrulla tu planeta), **RECOGER** (vuelve al
   hangar) o **PILOTAR** (la usas tú; tu nave anterior pasa al hangar).
-  **La flota activa escala con tu imperio: 2 + 1 por cada planeta propio** —
-  expandirse es la única forma de tener una flota grande.
+- **Hangar por niveles (v1.6)**: la flota activa y el almacén ya **no dependen de
+  los planetas conquistados**. El hangar se **amplía con créditos** (botón AMPLIAR
+  en el panel H: 150/300/450/600/750 ◈, 5 niveles): cada nivel da **+2 flota
+  activa y +2 almacén** (de flota 3/almacén 6 en nv.1 hasta flota 13/almacén 16
+  en nv.6). El límite real de tu armada es tu economía.
 - **Muerte real**: los wingmen caídos se pierden. Si TU nave es destruida, también la
   pierdes: reapareces en la capital con otra nave del hangar — o con un **caza de
   emergencia** si no te queda ninguna.
@@ -269,7 +272,7 @@ Posiciones a 10 Hz, disparos y chat retransmitidos **por sala**.
 | `style.css` | Estilo retro pixelado |
 | `game.js` | Motor completo + sistemas v0.3/v0.4/v0.5/v0.6 |
 | `server.js` | Servidor WebSocket multijugador con salas |
-| `tools/verify_ui.py` | Test E2E real (Playwright): 130 checks — menús, clics, tienda/tecnología, flota, RTS, facciones IA, niebla, economía, eventos, victoria, persistencia, zoom |
+| `tools/verify_ui.py` | Test E2E real (Playwright): 145 checks — menús, clics, tienda/tecnología, flota, hangar por niveles, RTS, facciones IA, niebla, economía, eventos, victoria, persistencia, zoom |
 | `README.md` | Este documento |
 
 ### Tests E2E
@@ -281,15 +284,13 @@ PYTHONIOENCODING=utf-8 ../.venv/Scripts/python tools/verify_ui.py   # desde app/
 
 ## Próximas ideas
 
-Resto de la Fase E (HP alto 10-20 impactos, reparación con coste, recursos por
-tipo de planeta) · tutorial del control RTS (Fase G, pendiente a petición de Pedro) ·
-condición de victoria (eliminar facciones por su capital) · personalidades de
-facción · misiones encadenadas en historia · jefes de facción · estaciones
-espaciales comerciales · mapas con agujeros de gusano.
+Asedios con defensas orbitales · misiones encadenadas en historia · tutorial del
+control RTS (Fase G, pendiente a petición de Pedro) · jefes de facción ·
+estaciones espaciales comerciales.
 
 ---
 
-*v1.4 · árbol de tecnología (ramas excluyentes) · personalidades y eventos · victoria real · economía estratégica · niebla de guerra*
+*v1.6 · hangar ampliable por niveles (la flota ya no depende de planetas) · árbol de tecnología · personalidades y eventos · victoria real · niebla de guerra*
 
 > ⚠️ El save v1.0 (`pixelfleet_save_v2`) no es compatible con partidas de versiones
 > anteriores (el mundo cambia de tamaño): al entrar empezarás una partida nueva.
