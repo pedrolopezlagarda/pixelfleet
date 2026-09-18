@@ -210,6 +210,22 @@ El roadmap v0.5 quedó completo en v1.2 (A-F + G/H). Nuevas líneas:
       lista; máx. 4 apilados, cooldown anti-spam); botón ✕ en todos los paneles;
       el scroll dentro de un menú ya NO hace zoom; hangar más legible (secciones
       con fondo, botones con iconos, AMPLIAR destacado).
+- [x] **v1.7 — Suministros por planeta**: cada planeta con dueño acumula **stock
+      local** de su recurso (⛏/⛽: +0,4/s, tope 100; ◈ sin stock). Adiós al
+      `player.mineral` global. Las naves cuestan **◈ + recurso** (caza 15⛏,
+      avispa 20⛽, explorador 25⛽, acorazado 45⛏) descontado de los stocks
+      propios (`takeStock`, del más lleno al más vacío). **Regla capital
+      minera**: toda capital (tuya e IA) se fuerza a `res:'mineral'` con 30⛏
+      iniciales. **Cola de construcción POR PLANETA** (`{type,t,planet}`):
+      cada planeta propio procesa su primer ítem en paralelo (máx. 3 por
+      planeta; si pierdes el astillero, su cola se cancela con aviso). Escudos
+      del jugador consumen ⛏ del stock; la IA paga 15⛏ por nave
+      (`FAC_SHIP_ORE`, simetría). Hangar con selector de astillero, costes
+      ◈+recurso, botones bloqueados con title explicativo y cola agrupada por
+      planeta. HUD con sumas ⛏/⛽, stock en etiqueta de planeta propio y en el
+      panel de imperio. Save v2 guarda stock y astillero; **migración**: el
+      viejo mineral global se vuelca a la capital y las colas viejas sin
+      planeta se asignan a ella (los saves viejos NO se invalidan).
 
 ## RESTRICCIONES TÉCNICAS
 - Vanilla JS + canvas, mismo estilo pixel-art. Nada de frameworks pesados.

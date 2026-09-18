@@ -1,4 +1,4 @@
-# 🚀 PIXEL FLEET — v1.6
+# 🚀 PIXEL FLEET — v1.7
 
 Juego de **estrategia espacial** vista cenital, pixel-art, multijugador.
 **Todas las facciones empiezan de cero**: su planeta capital y **una sola nave**,
@@ -83,13 +83,14 @@ imperio son siempre de otros colores). Desde el hangar (H), junto a tu capital:
 
 | Nave | Características | Coste | Construcción |
 |---|---|---|---|
-| Caza | Equilibrada | 60◈ | 15 s |
-| Avispa | +35% velocidad, frágil | 150◈ | 25 s |
-| Explorador | depósito ×1.6 | 200◈ | 30 s |
-| Acorazado | +9 HP, lenta, fuego pesado | 300◈ | 40 s |
+| Caza | Equilibrada | 60◈ + 15⛏ | 15 s |
+| Avispa | +35% velocidad, frágil | 150◈ + 20⛽ | 25 s |
+| Explorador | depósito ×1.6 | 200◈ + 25⛽ | 30 s |
+| Acorazado | +9 HP, lenta, fuego pesado | 300◈ + 45⛏ | 40 s |
 
-- La cola de construcción trabaja en la capital; al terminar, la nave va **al hangar**
-  — no sale sola.
+- La cola de construcción trabaja en **tus planetas astillero** (v1.7: el hangar
+  tiene selector de astillero y cada planeta procesa su cola en paralelo); al
+  terminar, la nave va **al hangar** — no sale sola.
 - Por cada nave decides: **SEGUIRME** (escolta en formación que dispara a tus
   agresores), **DEFENDER CAPITAL** (patrulla tu planeta), **RECOGER** (vuelve al
   hangar) o **PILOTAR** (la usas tú; tu nave anterior pasa al hangar).
@@ -101,6 +102,33 @@ imperio son siempre de otros colores). Desde el hangar (H), junto a tu capital:
 - **Muerte real**: los wingmen caídos se pierden. Si TU nave es destruida, también la
   pierdes: reapareces en la capital con otra nave del hangar — o con un **caza de
   emergencia** si no te queda ninguna.
+
+### ⛏ Suministros por planeta (v1.7)
+**Cada planeta tiene sus propios recursos.** El viejo mineral global del jugador
+ya no existe: cada planeta con dueño acumula un **stock local** de su recurso
+(⛏ mineral y ⛽ gas: +0,4/s, tope 100; los planetas de ◈ créditos no almacenan,
+siguen dando ◈/s directo). En el mundo, la etiqueta de tus planetas muestra su
+stock (`P-123 ● ⛏ 42`).
+
+- **Costes mixtos**: construir una nave cuesta ◈ **más un recurso** (caza 15⛏,
+  avispa 20⛽, explorador 25⛽, acorazado 45⛏). El recurso se descuenta de los
+  stocks de tus planetas de ese tipo, del más lleno al más vacío — si pierdes
+  tus minas, te quedas sin ⛏ para naves y escudos.
+- **Regla «capital minera»**: toda capital (la tuya y las de la IA) es siempre
+  un planeta de ⛏ mineral y arranca con **30⛏** de stock, para poder construir
+  los primeros cazas sin conquistar nada.
+- **Cola de construcción por planeta**: cada planeta propio es un **astillero**
+  que procesa su propia cola **en paralelo** (máx. 3 naves encoladas por
+  planeta). En el hangar (H) eliges el astillero con un selector (la capital ★
+  por defecto) y ves la cola agrupada por planeta. Si pierdes el planeta, su
+  cola **se cancela** sin reembolso (con aviso).
+- **Escudos**: la recarga de escudos de tus planetas consume ⛏ de tus stocks.
+- **IA simétrica**: los planetas de las facciones acumulan stock igual que los
+  tuyos y sus naves cuestan 60◈ + 15⛏ — si les cortas las minas, se les frena
+  la producción de naves.
+- El HUD muestra las **sumas** de ⛏ y ⛽ de tu imperio; el panel de imperio
+  (TAB) muestra los totales y el stock de cada planeta. Los saves antiguos se
+  migran solos: el viejo mineral global se vuelca al stock de tu capital.
 
 ### 🎖️ Control RTS de flota (v0.7)
 Tus naves desplegadas se controlan como en un **Age of Empires**:
@@ -149,8 +177,9 @@ construcción), tus planetas con escudo y producción, tu flota con su rol y el
   su **capital** (★ visible, escudo 100) lejos de las demás y **1 sola nave**.
 - **La IA juega**: sus naves **conquistan** planetas neutrales por presencia,
   **minan** asteroides (los ◈ van a la hucha de la facción) y **defienden** su
-  capital. Con 60◈ la facción **construye una nave nueva** (20 s; tope = 2 +
-  planetas propios). Las naves imperiales **mueren de verdad**.
+  capital. Con 60◈ **y 15⛏** (v1.7: de sus propias minas) la facción **construye
+  una nave nueva** (20 s; tope = 2 + planetas propios). Las naves imperiales
+  **mueren de verdad**.
 - **Neutralidad por defecto**: nadie ataca a nadie en paz. Cada ~40 s cada
   facción decide por **estrategia**: si es mucho más fuerte que otra puede
   **declararle la guerra**; si están igualadas, **aliarse**; y si la guerra va
@@ -233,9 +262,9 @@ Cuestan 400◈ y son permanentes (se guardan en la partida).
   (+1 HP / 1,5 s por 5◈); tus wingmen también (+1/2 s por 2◈). La IA se repara
   junto a sus planetas.
 - **Recursos por tipo de planeta** (icono junto al nombre): ⛏ **mineral**
-  (produce ⛏ y alimenta la **recarga de escudos** de tus planetas — sin mineral
-  no se regeneran), ⛽ **gas** (repostaje ×2), ◈ **créditos** (ingreso ×1; los
-  demás ×0,5).
+  (acumula **stock local** que paga la **recarga de escudos** y la construcción
+  de naves — v1.7), ⛽ **gas** (repostaje ×2 y stock para avispas/exploradores),
+  ◈ **créditos** (ingreso ×1; los demás ×0,5).
 - **Victoria y derrota reales (v1.2)**: una facción **cae** cuando se queda sin
   planetas, naves ni construcción (la construcción muere con la capital).
   Elimina a las 5 facciones IA → **🏆 VICTORIA** (y puedes seguir en modo libre).
@@ -284,7 +313,7 @@ Posiciones a 10 Hz, disparos y chat retransmitidos **por sala**.
 | `style.css` | Estilo retro pixelado |
 | `game.js` | Motor completo + sistemas v0.3/v0.4/v0.5/v0.6 |
 | `server.js` | Servidor WebSocket multijugador con salas |
-| `tools/verify_ui.py` | Test E2E real (Playwright): 150 checks — menús, clics, tienda/tecnología, flota, hangar por niveles, notificaciones, RTS, facciones IA, niebla, economía, eventos, victoria, persistencia, zoom |
+| `tools/verify_ui.py` | Test E2E real (Playwright): 180 checks — menús, clics, tienda/tecnología, flota, hangar por niveles, notificaciones, RTS, facciones IA, niebla, economía, eventos, victoria, persistencia, zoom, suministros por planeta (v1.7) |
 | `README.md` | Este documento |
 
 ### Tests E2E
@@ -302,7 +331,9 @@ estaciones espaciales comerciales.
 
 ---
 
-*v1.6 · hangar ampliable por niveles (la flota ya no depende de planetas) · árbol de tecnología · personalidades y eventos · victoria real · niebla de guerra*
+*v1.7 · suministros por planeta (stock local ⛏/⛽, costes ◈+recurso, colas por
+astillero) · hangar ampliable por niveles · árbol de tecnología · personalidades
+y eventos · victoria real · niebla de guerra*
 
 > ⚠️ El save v1.0 (`pixelfleet_save_v2`) no es compatible con partidas de versiones
 > anteriores (el mundo cambia de tamaño): al entrar empezarás una partida nueva.

@@ -21,7 +21,7 @@
       <div id="room-box">
         <input id="input-room" maxlength="8" placeholder="CÓDIGO DE SALA (opcional)">
       </div>
-      <p class="footer">v1.5 · gráficos por tipo de nave y estelas · árbol de tecnología</p>
+      <p class="footer">v1.7 · suministros por planeta · colas de construcción por astillero</p>
     </div>
 
     <div id="panel-help" class="panel hidden">
@@ -93,6 +93,7 @@
       <div class="bar"><span>⛽</span><div class="bar-bg"><div id="fuel-fill"></div></div></div>
       <div id="credits">◈ 0</div>
       <div id="mineral">⛏ 0</div>
+      <div id="gas">⛽ 0</div>   <!-- v1.7: stock total de gas -->
       <div id="kills">💀 0</div>
     </div>
 
@@ -162,8 +163,10 @@
       <h3>🚀 HANGAR</h3>
       <p class="panel-sub">Pilotando: <span id="hangar-current"></span> · Créditos: <span id="hangar-credits">0</span> ◈<span id="hangar-where"></span></p>
       <p class="panel-sub">Hangar nv. <b id="hangar-lvl">1</b> <button id="hangar-upg" title="+2 flota activa y +2 almacén por nivel">AMPLIAR</button></p>
-      <h4 class="panel-sub2">CONSTRUIR (en tu capital)<span id="hangar-qstat"></span></h4>
+      <!-- v1.7: cada nave cuesta ◈ + recurso; el astillero es un planeta propio -->
+      <h4 class="panel-sub2">CONSTRUIR EN <select id="hangar-yard"></select><span id="hangar-qstat"></span></h4>
       <div id="hangar-build"></div>
+      <div id="hangar-queue"></div>
       <h4 class="panel-sub2">FLOTA ACTIVA <span id="hangar-fstat"></span></h4>
       <div id="hangar-fleet"></div>
       <h4 class="panel-sub2">HANGAR <span id="hangar-hstat"></span></h4>

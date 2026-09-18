@@ -58,7 +58,7 @@ const player = {
   hp: 12, maxHp: 12, alive: true,   // v1.1: HP alto — las naves ya no caen en 3 impactos
   fuel: 100, maxFuel: 100,
   credits: 0, kills: 0, deaths: 0,
-  mineral: 40,              // v1.1: recurso para regenerar escudos de tus planetas
+  // v1.7: el mineral ya NO es global — vive como stock en los planetas (stockOf/takeStock)
   invuln: 2, respawnT: 0, shootCd: 0,
   upgrades: { motor: 0, cadencia: 0, blindaje: 0, deposito: 0 },
   tech: {},                   // v1.4: tecnologías de nivel 2 (excluyentes por rama)
@@ -167,6 +167,35 @@ const rndW  = (a, b) => a + rngWorld() * (b - a);
 const rndiW = (a, b) => Math.floor(rndW(a, b + 1));
 const PLANET_RES = ['mineral', 'gas', 'creditos'];   // v1.1: tipo de recurso por planeta
 const RES_ICON = { mineral: '⛏', gas: '⛽', creditos: '◈' };
+
+/* ---------- v1.7: suministros por planeta ---------- */
+// Cada planeta con dueño acumula stock LOCAL de su recurso (⛏ mineral y ⛽ gas;
+// los planetas de ◈ no almacenan: siguen dando créditos directos). El consumo
+// es a nivel de imperio: se descuenta de los planetas propios de ese tipo,
+// del más lleno al más vacío. Si pierdes tus minas, te quedas sin ⛏.
+const STOCK_CAP = 100;         // tope de stock por planeta
+const STOCK_RATE = 0.4;        // unidades/s que produce un planeta con dueño
+const CAP_START_STOCK = 30;    // la capital (siempre minera, v1.7) arranca con 30⛏
+function planetsWithStock(color, res) {
+  return planets.filter(p => p.owner === color && p.res === res);
+}
+function stockOf(color, res) {
+  return planetsWithStock(color, res).reduce((s, p) => s + (p.stock || 0), 0);
+}
+// Descuenta n unidades del recurso de los planetas propios (del más lleno al
+// más vacío). Devuelve false —sin descontar nada— si no hay suficiente.
+function takeStock(color, res, n) {
+  if (stockOf(color, res) < n) return false;
+  let left = n;
+  const mine = planetsWithStock(color, res).sort((a, b) => (b.stock || 0) - (a.stock || 0));
+  for (const p of mine) {
+    const take = Math.min(p.stock || 0, left);
+    p.stock = (p.stock || 0) - take;
+    left -= take;
+    if (left <= 0) break;
+  }
+  return true;
+}
 const planets = [];
 for (let i = 0; i < 64; i++) {   // v1.0: 64 planetas (el mundo creció a 12000×12000)
   const r = rndiW(24, 70);
@@ -178,6 +207,7 @@ for (let i = 0; i < 64; i++) {   // v1.0: 64 planetas (el mundo creció a 12000�
     sprite: makePlanet(r, rngWorld),
     name: 'P-' + rndiW(100, 999),
     res: PLANET_RES[rndiW(0, 2)],   // v1.1: ⛏ mineral / ⛽ gas / ◈ créditos (determinista)
+    stock: 0,           // v1.7: suministro local acumulado (solo con dueño)
     owner: null,        // color de facción o null
     capture: 0,         // progreso 0..1
     capturer: null,     // facción que está capturando
@@ -205,7 +235,7 @@ const BOT_NAMES = ['Xx_Nova_xX', 'Zorg', 'PixelLord', 'Andromeda', 'Vega', 'Capi
 const bots = [];
 // estado por facción IA: capital, hucha común, relaciones con las demás, cola de construcción
 const facState = {};   // color -> { capital, credits, rel:{color->num}, warT:{}, aiT, buildT, building, personality }
-const FAC_SHIP_COST = 60, FAC_SHIP_TIME = 20;
+const FAC_SHIP_COST = 60, FAC_SHIP_TIME = 20, FAC_SHIP_ORE = 15;   // v1.7: la IA también paga ⛏ por nave
 const playerAggro = {};   // color -> s restantes de "provocada por el jugador" (wingmen pueden responder)
 
 /* v1.3: personalidades de facción — cada imperio juega distinto */
@@ -273,6 +303,7 @@ function initFactions() {
     if (!cap) continue;
     cap.owner = c; cap.capital = true; cap.shieldMax = 100; cap.shield = 100;
     cap.name = 'CAPITAL ' + facName(c);
+    cap.res = 'mineral'; cap.stock = CAP_START_STOCK;   // v1.7: capital minera también para la IA
     facState[c] = { capital: cap, credits: 20, rel: {}, warT: {}, aiT: rnd(2, 6), buildT: 0, building: false, personality: null };
     for (const o of FACTION_COLORS) if (o !== c) facState[c].rel[o] = 0;
     spawnFactionShip(c);
@@ -780,7 +811,9 @@ function update(dt) {
     f.credits += owned.reduce((s, p) => s + (p.capital ? PLANET_INCOME * 3 : (p.res === 'creditos' ? PLANET_INCOME : PLANET_INCOME * 0.5)), 0) * dt * (persOf(c).incomeMul || 1);   // v1.3: los mercantiles ganan más
     const ships = bots.filter(b => b.imp && b.alive && b.color === c).length;
     const cap = 2 + owned.length;
-    if (!f.building && f.credits >= FAC_SHIP_COST && ships < cap && f.capital && f.capital.owner === c) {
+    // v1.7: simetría de suministros — sin ⛏ en sus planetas mineros no hay nave nueva
+    if (!f.building && f.credits >= FAC_SHIP_COST && ships < cap && f.capital && f.capital.owner === c &&
+        takeStock(c, 'mineral', FAC_SHIP_ORE)) {
       f.credits -= FAC_SHIP_COST; f.building = true; f.buildT = FAC_SHIP_TIME;
     }
     // v1.2: la construcción muere con la capital (sin capital propio, no hay astillero)
@@ -931,22 +964,27 @@ function update(dt) {
   }
 
   // ingresos por planetas propios según RECURSO (v1.1): ◈ créditos ×1, ⛏/⛽ ×0,5,
-  // capital ×3; los planetas ⛏ además producen mineral para los escudos
+  // capital ×3; los recursos ⛏/⛽ se acumulan como stock local (v1.7, abajo)
   let income = 0;
-  for (const p of planets) if (p.owner === player.color) {
+  for (const p of planets) if (p.owner === player.color)
     income += p === playerCapital ? PLANET_INCOME * 3 : (p.res === 'creditos' ? PLANET_INCOME : PLANET_INCOME * 0.5);
-    if (p.res === 'mineral') player.mineral += 0.4 * (player.tech.extractor ? 1.5 : 1) * dt;   // v1.4: extractor +50 %
-  }
   player.credits += income * dt;
+  // v1.7: cada planeta con dueño (tuyo o de la IA — simetría) acumula stock de
+  // su recurso en local (tope 100). Los planetas de ◈ créditos no almacenan.
+  for (const p of planets) {
+    if (!p.owner || p.res === 'creditos') continue;
+    const mul = p.owner === player.color && player.tech.extractor ? 1.5 : 1;   // v1.4: extractor +50 %
+    p.stock = Math.min(STOCK_CAP, p.stock + STOCK_RATE * mul * dt);
+  }
 
   // v1.1: los escudos se RECARGAN consumiendo el recurso del dueño
-  // (jugador: ⛏ mineral · facciones IA: ◈ de su hucha). Sin recurso, no recargan.
+  // (jugador: ⛏ del stock de sus minas (v1.7) · facciones IA: ◈ de su hucha).
   for (const p of planets) {
     if (!p.owner || p.shield >= p.shieldMax) continue;
     const pts = Math.min(1.5 * dt, p.shieldMax - p.shield);
     if (p.owner === player.color) {
       const cost = pts * 0.2;
-      if (player.mineral >= cost) { player.mineral -= cost; p.shield += pts; }
+      if (takeStock(player.color, 'mineral', cost)) p.shield += pts;   // v1.7
     } else {
       const f = facState[p.owner], cost = pts * 0.5;
       if (f && f.credits >= cost) { f.credits -= cost; p.shield += pts; }
@@ -995,7 +1033,8 @@ function update(dt) {
   document.getElementById('fuel-fill').style.width = (player.fuel / player.maxFuel * 100) + '%';
   document.getElementById('credits').textContent = '◈ ' + Math.floor(player.credits);
   document.getElementById('kills').textContent = '💀 ' + player.kills;
-  document.getElementById('mineral').textContent = '⛏ ' + Math.floor(player.mineral);   // v1.1
+  document.getElementById('mineral').textContent = '⛏ ' + Math.floor(stockOf(player.color, 'mineral'));   // v1.7: suma de tus minas
+  document.getElementById('gas').textContent = '⛽ ' + Math.floor(stockOf(player.color, 'gas'));   // v1.7: suma de tus gasolineras
 
   // barra de captura
   const capEl = document.getElementById('capbar');
@@ -1099,7 +1138,10 @@ function draw() {
     if (z >= 0.8 && dist2(p.x, p.y, player.x, player.y) < 700 * 700) {
       ctx.font = (6 / z) + 'px monospace'; ctx.textAlign = 'center';
       ctx.fillStyle = shownOwner || '#8fa8d0';
-      ctx.fillText(p.name + (shownOwner ? ' ●' : '') + (p.capital ? ' ★' : '') + (pVis ? ' ' + RES_ICON[p.res] : ' ?'), p.x, p.y - p.r - 4 / z);
+      // v1.7: en planetas propios se muestra además su stock local (⛏ 42)
+      ctx.fillText(p.name + (shownOwner ? ' ●' : '') + (p.capital ? ' ★' : '') +
+        (pVis ? ' ' + RES_ICON[p.res] + (p.owner === player.color && p.res !== 'creditos' ? ' ' + Math.floor(p.stock) : '') : ' ?'),
+        p.x, p.y - p.r - 4 / z);
     }
     ctx.globalAlpha = 1;
   }
@@ -1482,6 +1524,7 @@ function newGameInit() {
   cap.capital = true;
   cap.shieldMax = 100; cap.shield = 100;   // escudo grande de capital
   cap.name = 'CAPITAL ' + player.name;
+  cap.res = 'mineral'; cap.stock = CAP_START_STOCK;   // v1.7: regla «capital minera» — arranque con 30⛏
   const sa = rnd(0, TAU);
   player.x = clamp(cap.x + Math.cos(sa) * (cap.r + 90), 16, WORLD.w - 16);
   player.y = clamp(cap.y + Math.sin(sa) * (cap.r + 90), 16, WORLD.h - 16);
@@ -1503,6 +1546,7 @@ function newGameInit() {
   player.hangarLvl = 0;   // v1.6: hangar nv.1 en partida nueva
   hangarShips.length = 0;
   buildQueue.length = 0;
+  shipyardIdx = null;   // v1.7: astillero por defecto = la capital
   applyUpgrades();
   player.hp = player.maxHp; player.fuel = player.maxFuel;
   if (player.credits < 40) player.credits = 40;   // fondos iniciales
@@ -1678,7 +1722,7 @@ function saveGame() {
         name: player.name, color: player.color,
         x: player.x, y: player.y, angle: player.angle,
         hp: player.hp, fuel: player.fuel,
-        credits: Math.floor(player.credits), mineral: Math.floor(player.mineral), kills: player.kills, deaths: player.deaths,
+        credits: Math.floor(player.credits), kills: player.kills, deaths: player.deaths,
         upgrades: player.upgrades, ship: player.ship,
         tech: player.tech,   // v1.4
         hangarLvl: player.hangarLvl,   // v1.6
@@ -1686,7 +1730,8 @@ function saveGame() {
       capitalIdx: planets.indexOf(playerCapital),
       prepT: Math.max(0, prepT),
       // solo planetas con dueño (los neutros son el estado inicial determinista)
-      planets: planets.map((p, i) => p.owner ? { i, owner: p.owner, shield: p.shield, cap: p.capital ? 1 : 0, known: p.knownOwner || null } : null).filter(Boolean),
+      // v1.7: se guarda también el stock local de suministros de cada planeta
+      planets: planets.map((p, i) => p.owner ? { i, owner: p.owner, shield: p.shield, cap: p.capital ? 1 : 0, known: p.knownOwner || null, stock: Math.round(p.stock * 100) / 100 } : null).filter(Boolean),
       fog: Array.from(explored).join(''),   // v0.9: mapa explorado (1600 celdas 0/1)
       bots: bots.filter(b => !b.pirate).map(b => ({   // v1.3: los piratas son del evento, no se guardan
         name: b.name, color: b.color, x: b.x, y: b.y,
@@ -1708,7 +1753,7 @@ function saveGame() {
       playerAggro,
       victory,   // v1.2
       hangarShips: hangarShips.slice(),
-      buildQueue: buildQueue.map(q => ({ type: q.type, t: q.t })),
+      buildQueue: buildQueue.map(q => ({ type: q.type, t: q.t, planet: q.planet })),   // v1.7: con su astillero
       standings,
       contracts: { offers: contracts.offers, active: contracts.active, seq: contracts.seq },
     }));
@@ -1722,7 +1767,7 @@ function applySave(d) {
   player.angle = d.player.angle || 0;
   player.vx = player.vy = 0;
   player.credits = d.player.credits || 0;
-  player.mineral = d.player.mineral ?? 40;   // v1.1
+  // v1.7: player.mineral ya no existe — el viejo valor se vuelca a la capital (abajo)
   player.kills = d.player.kills || 0;
   player.deaths = d.player.deaths || 0;
   Object.assign(player.upgrades, d.player.upgrades || {});
@@ -1736,6 +1781,7 @@ function applySave(d) {
   for (const p of planets) {
     p.owner = null; p.shield = 0; p.shieldMax = 25;
     p.capture = 0; p.capturer = null; p.capital = false;
+    p.stock = 0;   // v1.7
   }
   playerCapital = planets[d.capitalIdx] || null;
   if (playerCapital) {
@@ -1754,6 +1800,9 @@ function applySave(d) {
     if (!p) continue;
     p.owner = sp.owner; p.shield = sp.shield;
     p.knownOwner = sp.known ?? null;   // v0.9: último dueño conocido
+    // v1.7: stock local. Migración de saves viejos (sin stock): 0, salvo las
+    // capitales, que arrancan con 30⛏ (regla «capital minera»)
+    p.stock = sp.stock != null ? Math.min(STOCK_CAP, sp.stock) : (sp.cap ? CAP_START_STOCK : 0);
     // v0.8: restaurar capitales de facción (escudo grande + nombre + enlace en facState)
     if (sp.cap && sp.owner !== player.color) {
       p.capital = true; p.shieldMax = 100; p.name = 'CAPITAL ' + facName(sp.owner);
@@ -1769,6 +1818,13 @@ function applySave(d) {
     if (c === player.color || !facState[c]) continue;
     if (!facState[c].capital) facState[c].capital = planets.find(p => p.owner === c && p.capital) || planets.find(p => p.owner === c) || null;
   }
+  // v1.7: regla «capital minera» — la res es determinista y no se guarda, así que
+  // toda capital (tuya y de la IA) se fuerza a mineral tras cargar la partida
+  for (const p of planets) if (p.capital && p.owner) p.res = 'mineral';
+  // v1.7: migración — el viejo player.mineral global (saves ≤ v1.6) se vuelca al
+  // stock de tu capital (tope 100)
+  if (d.player.mineral != null && playerCapital)
+    playerCapital.stock = Math.min(STOCK_CAP, playerCapital.stock + Math.max(0, d.player.mineral));
   if (d.factions) for (const c in d.factions) {
     if (!facState[c]) continue;
     const sv = d.factions[c];
@@ -1808,7 +1864,10 @@ function applySave(d) {
   hangarShips.length = 0;
   for (const t of d.hangarShips || []) hangarShips.push(t);
   buildQueue.length = 0;
-  for (const q of d.buildQueue || []) buildQueue.push({ type: q.type, t: q.t });
+  // v1.7: la cola guarda su astillero; entradas de saves viejos sin planet → la capital
+  const capIdx = planets.indexOf(playerCapital);
+  for (const q of d.buildQueue || []) buildQueue.push({ type: q.type, t: q.t, planet: q.planet ?? capIdx });
+  shipyardIdx = null;
   // diplomacia y contratos
   if (d.standings) Object.assign(standings, d.standings);
   if (d.contracts) {
@@ -1954,11 +2013,13 @@ backToMenu = function () { saveGame(); _back(); };
 /* ---------- hangar v0.6: catálogo de CONSTRUCCIÓN ---------- */
 // Las naves ya no son "skins" instantáneos: se construyen en la capital,
 // van al hangar y tú decides su rol (SEGUIRME / DEFENDER / PILOTAR).
+// v1.7: cada nave paga ◈ + un RECURSO (resType/resCost) que se descuenta de los
+// stocks de tus planetas de ese tipo (takeStock: del más lleno al más vacío)
 const SHIPS = [   // v1.1: HP alto (10-20 impactos) — el mod de hp se escala ×3
-  { id: 'caza',       name: 'Caza',       desc: 'Equilibrado',                  cost: 60,  buildTime: 15, accel: 1.0,  rof: 1.0,  hp: 0,  fuel: 1.0, size: 1.0 },
-  { id: 'avispa',     name: 'Avispa',     desc: 'Muy rápida, frágil',           cost: 150, buildTime: 25, accel: 1.35, rof: 0.85, hp: -3, fuel: 1.0, size: 0.9 },
-  { id: 'acorazado',  name: 'Acorazado',  desc: 'Lento, +9 blindaje',           cost: 300, buildTime: 40, accel: 0.8,  rof: 1.3,  hp: 9,  fuel: 1.0, size: 1.2 },
-  { id: 'explorador', name: 'Explorador', desc: 'Depósito de combustible ×1.6', cost: 200, buildTime: 30, accel: 1.05, rof: 1.0,  hp: 0,  fuel: 1.6, size: 1.0 },
+  { id: 'caza',       name: 'Caza',       desc: 'Equilibrado',                  cost: 60,  resType: 'mineral', resCost: 15, buildTime: 15, accel: 1.0,  rof: 1.0,  hp: 0,  fuel: 1.0, size: 1.0 },
+  { id: 'avispa',     name: 'Avispa',     desc: 'Muy rápida, frágil',           cost: 150, resType: 'gas',    resCost: 20, buildTime: 25, accel: 1.35, rof: 0.85, hp: -3, fuel: 1.0, size: 0.9 },
+  { id: 'acorazado',  name: 'Acorazado',  desc: 'Lento, +9 blindaje',           cost: 300, resType: 'mineral', resCost: 45, buildTime: 40, accel: 0.8,  rof: 1.3,  hp: 9,  fuel: 1.0, size: 1.2 },
+  { id: 'explorador', name: 'Explorador', desc: 'Depósito de combustible ×1.6', cost: 200, resType: 'gas',    resCost: 25, buildTime: 30, accel: 1.05, rof: 1.0,  hp: 0,  fuel: 1.6, size: 1.0 },
 ];
 const shipDef = id => SHIPS.find(s => s.id === id) || SHIPS[0];
 function getShipMod() { return shipDef(player.ship); }
@@ -2077,9 +2138,28 @@ function renderHangar() {
   // v0.6: innerHTML SOLO al abrir el panel o tras una acción (regla v0.5.3b).
   // Por frame se actualiza con refreshHangar() (textContent/disabled únicamente).
   $('hangar-current').textContent = shipDef(player.ship).name;
+  // v1.7: selector de astillero — cualquier planeta propio construye (★ capital por defecto)
+  const own = planets.map((p, i) => [p, i]).filter(([p]) => p.owner === player.color);
+  if (shipyardIdx == null || !planets[shipyardIdx] || planets[shipyardIdx].owner !== player.color)
+    shipyardIdx = playerCapital ? planets.indexOf(playerCapital) : (own.length ? own[0][1] : null);
+  const yardSel = $('hangar-yard');
+  yardSel.innerHTML = own.map(([p, i]) =>
+    `<option value="${i}"${i === shipyardIdx ? ' selected' : ''}>${p === playerCapital ? '★ ' : ''}${p.name} ${RES_ICON[p.res]}</option>`).join('');
+  yardSel.onchange = () => { shipyardIdx = +yardSel.value; renderHangar(); };
+  // v1.7: cada nave cuesta ◈ + un recurso del stock de tus planetas
   $('hangar-build').innerHTML = SHIPS.map(s =>
     `<div class="hangar-item"><div class="info"><b>${s.name}</b><span>${s.desc} · ${s.buildTime}s</span></div>
-     <button data-build="${s.id}">${s.cost}◈</button></div>`).join('');
+     <button data-build="${s.id}">${s.cost}◈ + ${s.resCost}${RES_ICON[s.resType]}</button></div>`).join('');
+  // v1.7: cola de construcción agrupada por planeta astillero (las cuentas
+  // atrás viven en spans data-qt para actualizar solo texto por frame)
+  const groups = {};
+  buildQueue.forEach((q, i) => { (groups[q.planet] = groups[q.planet] || []).push(i); });
+  $('hangar-queue').innerHTML = Object.keys(groups).map(pi => {
+    const p = planets[pi];
+    return `<div class="hangar-queue-row">🏗️ ${p && p.capital ? '★ ' : ''}${p ? p.name : '?'}: ` +
+      groups[pi].map(i => `<span data-qt="${i}">${shipDef(buildQueue[i].type).name} ${Math.ceil(buildQueue[i].t)}s</span>`).join(' · ') +
+      `</div>`;
+  }).join('');
   const fleet = bots.filter(b => b.built);
   $('hangar-fleet').innerHTML = fleet.length ? fleet.map(b =>
     `<div class="hangar-item"><div class="info"><b>${b.name}</b><span>${shipDef(b.shipType).name} · <span data-hp="${b.uid}">${Math.ceil(b.hp)}</span> HP · ${roleLabel(b)}</span></div>
@@ -2098,7 +2178,7 @@ function renderHangar() {
        <button data-hact="pilot" data-hi="${i}">🧑‍🚀 PILOTAR</button>
      </div></div>`).join('')
     : '<div class="hangar-empty">Hangar vacío: construye naves arriba</div>';
-  hangarEl.querySelectorAll('button[data-build]').forEach(btn => btn.onclick = () => { queueShip(btn.dataset.build); renderHangar(); });
+  hangarEl.querySelectorAll('button[data-build]').forEach(btn => btn.onclick = () => { queueShip(btn.dataset.build, shipyardIdx); renderHangar(); });
   hangarEl.querySelectorAll('button[data-fact]').forEach(btn => btn.onclick = () => {
     const uid = +btn.dataset.uid;
     if (btn.dataset.fact === 'recall') recallShip(uid); else setWingRole(uid, btn.dataset.fact);
@@ -2133,9 +2213,25 @@ function refreshHangar() {
   // radio); solo PILOTAR sigue requiriendo atracar en la capital
   $('hangar-where').textContent = nearCapital() ? '' : ' · ⚠ PILOTAR solo junto a tu capital';
   const near = nearCapital();
+  // v1.7: construir exige ◈ Y el recurso de la nave (del stock de tus planetas);
+  // el botón se bloquea si falta cualquiera y el title explica qué falta
+  const yard = shipyard();
+  const yardFull = yard ? buildQueue.filter(qi => qi.planet === planets.indexOf(yard)).length >= QUEUE_PER_PLANET : false;
   hangarEl.querySelectorAll('button[data-build]').forEach(btn => {
     const s = shipDef(btn.dataset.build);
-    btn.disabled = player.credits < s.cost || hangarShips.length + buildQueue.length >= hangarMax();
+    const noCred = player.credits < s.cost;
+    const noRes = stockOf(player.color, s.resType) < s.resCost;
+    const full = hangarShips.length + buildQueue.length >= hangarMax();
+    btn.disabled = noCred || noRes || full || yardFull;
+    btn.title = noCred ? 'Te faltan ◈: cuesta ' + s.cost + '◈'
+      : noRes ? 'Te falta ' + RES_ICON[s.resType] + ': cuesta ' + s.resCost + ' y tienes ' + Math.floor(stockOf(player.color, s.resType))
+      : yardFull ? 'Astillero saturado (máx. ' + QUEUE_PER_PLANET + ' en cola en este planeta)'
+      : full ? 'Hangar lleno' : '';
+  });
+  // v1.7: cuentas atrás de la cola agrupada por planeta (solo texto por frame)
+  hangarEl.querySelectorAll('span[data-qt]').forEach(sp => {
+    const qi = buildQueue[+sp.dataset.qt];
+    if (qi) sp.textContent = shipDef(qi.type).name + ' ' + Math.ceil(qi.t) + 's';
   });
   hangarEl.querySelectorAll('button[data-hact]').forEach(btn => {
     btn.disabled = btn.dataset.hact === 'pilot' ? !near : fleetCount() >= fleetMax();
@@ -2268,34 +2364,80 @@ function upgradeHangar() {
   renderHangar();
 }
 let hangarShips = [];      // ids de SHIPS guardados en la capital
-const buildQueue = [];     // {type, t} — segundos restantes del primero
+// v1.7: la cola es POR PLANETA — {type, t, planet} (índice del astillero).
+// Cada planeta propio procesa el primer ítem de su cola en paralelo.
+const buildQueue = [];
+const QUEUE_PER_PLANET = 3;   // máximo de ítems encolados por astillero
+let shipyardIdx = null;       // astillero elegido en el hangar (null → la capital)
+function shipyard() {         // planeta astillero actual (si lo pierdes, vuelve la capital)
+  const p = shipyardIdx != null ? planets[shipyardIdx] : null;
+  return (p && p.owner === player.color) ? p : playerCapital;
+}
 let wingUid = 0;
 function nearCapital() {
   return playerCapital && player.alive &&
     dist2(player.x, player.y, playerCapital.x, playerCapital.y) < (playerCapital.r + 300) ** 2;
 }
 function fleetCount() { return bots.filter(b => b.built).length; }
-function queueShip(type) {
+function queueShip(type, planetIdx) {
   const s = shipDef(type);
-  if (!playerCapital) return;
+  // v1.7: el astillero es un planeta PROPIO cualquiera (por defecto, la capital)
+  const yard = (planetIdx != null && planets[planetIdx] && planets[planetIdx].owner === player.color)
+    ? planets[planetIdx] : playerCapital;
+  if (!yard) return;
   // v1.5.2: las órdenes llegan por radio — ya no hace falta estar junto a la capital
   if (hangarShips.length + buildQueue.length >= hangarMax()) { chatSys('🏗️ Hangar lleno (' + hangarMax() + ' naves).'); return; }
+  if (buildQueue.filter(q => q.planet === planets.indexOf(yard)).length >= QUEUE_PER_PLANET) {
+    notify('🏗️ Astillero de ' + yard.name + ' saturado (máx. ' + QUEUE_PER_PLANET + ' en cola)', 'warn');
+    chatSys('🏗️ El astillero de ' + yard.name + ' ya tiene ' + QUEUE_PER_PLANET + ' naves en cola.');
+    return;
+  }
   if (player.credits < s.cost) { chatSys('◈ Necesitas ' + s.cost + '◈ para construir un ' + s.name + '.'); return; }
+  if (!takeStock(player.color, s.resType, s.resCost)) {   // v1.7: el recurso sale de los stocks de tus planetas
+    notify('Sin ' + RES_ICON[s.resType] + ' suficiente: un ' + s.name + ' cuesta ' + s.cost + '◈ + ' + s.resCost + RES_ICON[s.resType], 'warn');
+    chatSys(RES_ICON[s.resType] + ' Necesitas ' + s.resCost + ' de ' + s.resType + ' en tus planetas para un ' + s.name +
+            ' (tienes ' + Math.floor(stockOf(player.color, s.resType)) + ').');
+    return;
+  }
   player.credits -= s.cost;
-  buildQueue.push({ type, t: s.buildTime });
-  chatSys('🏗️ Orden por radio: construyendo ' + s.name + ' en la capital (' + s.buildTime + 's)…');
+  buildQueue.push({ type, t: s.buildTime, planet: planets.indexOf(yard) });
+  chatSys('🏗️ Orden por radio: construyendo ' + s.name + ' en ' + yard.name + ' (' + s.buildTime + 's)…');
   saveGame();
 }
 function buildUpdate(dt) {
-  if (!buildQueue.length || !playerCapital) return;
-  buildQueue[0].t -= dt;
-  if (buildQueue[0].t > 0) return;
-  const item = buildQueue.shift();
-  hangarShips.push(item.type);   // la nave va AL HANGAR: la despliegas tú
-  chatSys('🛰️ ' + shipDef(item.type).name + ' construido y en el hangar (' + hangarShips.length + '/' + hangarMax() + ')');
-  notify('🛰️ ' + shipDef(item.type).name + ' listo en el hangar', 'good');   // v1.6.1
+  if (!buildQueue.length) return;
+  // v1.7: si el planeta astillero se pierde, su cola se CANCELA (sin reembolso) —
+  // coherente con «la construcción muere con la capital» (v1.2)
+  let cancelled = false;
+  for (let i = buildQueue.length - 1; i >= 0; i--) {
+    const p = planets[buildQueue[i].planet];
+    if (p && p.owner === player.color) continue;
+    chatSys('🏗️ Construcción de ' + shipDef(buildQueue[i].type).name + ' CANCELADA: ' + (p ? p.name : 'el astillero') + ' ya no es tuyo.');
+    buildQueue.splice(i, 1);
+    cancelled = true;
+  }
+  if (cancelled) notify('🏗️ Cola de construcción cancelada: astillero perdido', 'danger');
+  // v1.7: cada planeta propio procesa el PRIMER ítem de su cola en paralelo
+  const seen = {};
+  for (const q of buildQueue) {
+    if (seen[q.planet]) continue;
+    seen[q.planet] = true;
+    q.t -= dt;
+  }
+  // recoger las naves terminadas (pueden ser varias a la vez, una por planeta)
+  let done = false;
+  for (let i = buildQueue.length - 1; i >= 0; i--) {
+    const q = buildQueue[i];
+    if (q.t > 0) continue;
+    buildQueue.splice(i, 1);
+    hangarShips.push(q.type);   // la nave va AL HANGAR: la despliegas tú
+    const yardName = planets[q.planet] ? planets[q.planet].name : 'la capital';
+    chatSys('🛰️ ' + shipDef(q.type).name + ' construido y en el hangar (' + hangarShips.length + '/' + hangarMax() + ') — astillero: ' + yardName);
+    notify('🛰️ ' + shipDef(q.type).name + ' listo en el hangar', 'good');   // v1.6.1
+    done = true;
+  }
   // evento discreto: si el hangar está abierto, se re-renderiza (regla v0.5.3b)
-  if (typeof hangarEl !== 'undefined' && !hangarEl.classList.contains('hidden')) renderHangar();
+  if ((done || cancelled) && typeof hangarEl !== 'undefined' && !hangarEl.classList.contains('hidden')) renderHangar();
 }
 function makeWingman(type, role) {
   const mod = shipDef(type);
@@ -2611,7 +2753,7 @@ const TUT = [
     done: () => Math.abs(player.vx) + Math.abs(player.vy) > 40 },
   { html: 'Usa la <b>rueda del ratón</b>: aléjate para ver el <b>mapa de la galaxia</b> y acércate para pilotar.',
     done: () => cam.zoomTarget < 0.8 || cam.zoomTarget > 1.25 },
-  { html: 'Pulsa <b>H</b> y <b>construye un caza</b> (60◈ · 15 s). Tu capital genera los créditos sola, tú espera junto a ella. Al terminar irá al <b>hangar</b>: despliégalo con SEGUIRME o DEFENDER.',
+  { html: 'Pulsa <b>H</b> y <b>construye un caza</b> (60◈ + 15⛏ · 15 s). Tu capital es <b>minera</b>: genera créditos y acumula ⛏ sola, tú espera junto a ella. Al terminar irá al <b>hangar</b>: despliégalo con SEGUIRME o DEFENDER.',
     done: () => buildQueue.length > 0 || hangarShips.length > 0 || fleetCount() > 0 },
   { html: 'Acércate a un <b>planeta neutral</b> cercano y permanece a su lado para <b>conquistarlo</b> (unos segundos). Más planetas = más ◈/s.',
     done: () => planets.some(p => p.owner === player.color && p !== playerCapital) },
@@ -2712,14 +2854,17 @@ function renderEmpire() {
   const own = planets.filter(p => p.owner === player.color);
   const inc = own.reduce((s, p) => s + (p === playerCapital ? PLANET_INCOME * 3 : (p.res === 'creditos' ? PLANET_INCOME : PLANET_INCOME * 0.5)), 0);
   const fleet = bots.filter(b => b.built && b.alive);
-  let html = '<p class="panel-sub">🪐 ' + own.length + ' planeta(s) · +' + inc.toFixed(1) + '◈/s · ⛏ ' + Math.floor(player.mineral) + ' · 🛰 ' +
+  // v1.7: el resumen muestra los TOTALES de suministros (suma de los stocks propios)
+  let html = '<p class="panel-sub">🪐 ' + own.length + ' planeta(s) · +' + inc.toFixed(1) + '◈/s · ⛏ ' + Math.floor(stockOf(player.color, 'mineral')) +
+    ' · ⛽ ' + Math.floor(stockOf(player.color, 'gas')) + ' · 🛰 ' +
     fleet.length + '/' + fleetMax() + ' · hangar ' + hangarShips.length +
     (buildQueue.length ? ' · 🏗️ ' + Math.ceil(buildQueue[0].t) + ' s' : '') + '</p>';
   html += '<h4 class="panel-sub2">PLANETAS PROPIOS</h4>';
   html += own.length
     ? own.map(p => '<div class="diplo-row"><span style="color:' + player.color + '">' +
         (p === playerCapital ? '★ ' : '') + p.name + ' ' + RES_ICON[p.res] + '</span><span>🛡 ' + Math.floor(p.shield) + '/' + p.shieldMax +
-        ' · +' + (p === playerCapital ? PLANET_INCOME * 3 : (p.res === 'creditos' ? PLANET_INCOME : PLANET_INCOME * 0.5)) + '◈/s</span></div>').join('')
+        ' · +' + (p === playerCapital ? PLANET_INCOME * 3 : (p.res === 'creditos' ? PLANET_INCOME : PLANET_INCOME * 0.5)) + '◈/s' +
+        (p.res !== 'creditos' ? ' · ' + RES_ICON[p.res] + ' ' + Math.floor(p.stock) + '/' + STOCK_CAP : '') + '</span></div>').join('')
     : '<div class="diplo-row"><span>sin planetas</span></div>';
   html += '<h4 class="panel-sub2">FLOTA</h4>';
   html += fleet.length

@@ -207,6 +207,11 @@ body {
 #hangar-upg:disabled { opacity: .3; cursor: default; }
 #hangar-upg:disabled:hover { background: #2a2408; color: #ffd166; }
 #hangar-where { color: #ff9f5a; }
+/* v1.7: selector de astillero y colas por planeta */
+#hangar-yard { font-family: inherit; font-size: 10px; background: #101a33; color: #7ef9ff;
+  border: 1px solid #2a3a5f; margin: 0 6px; max-width: 150px; }
+.hangar-queue-row { color: #8fa8d0; font-size: 11px; padding: 2px 4px; }
+.hangar-queue-row span { color: #e8f0ff; }
 #btn-wipe { color: #ff6b8a; border-color: #ff6b8a; box-shadow: 0 6px 0 #4a1220; }
 #btn-wipe:hover { background: #ff6b8a; color: #05060e; box-shadow: 0 4px 0 #4a1220; }
 

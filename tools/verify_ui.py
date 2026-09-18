@@ -1,10 +1,12 @@
 # verify_ui.py — prueba E2E real de PixelFleet v0.6 (headless Chromium)
 # Uso: ../.venv/Scripts/python tools/verify_ui.py   (desde app/)
 # Cubre: menú/ajustes, arranque, tienda, diplomacia, contratos, hangar/flota,
-# chat, persistencia total (continuar) y borrado de partida.
+# chat, persistencia total (continuar), borrado de partida y v1.7 (suministros
+# por planeta: stocks, costes ◈+recurso, colas por astillero, migración de saves).
 # Nota: los clics son reales; solo se aceleran créditos/tiempos de
 # construcción vía evaluate para no hacer el test eterno.
 import sys
+import re
 from pathlib import Path
 from playwright.sync_api import sync_playwright
 
@@ -73,7 +75,16 @@ with sync_playwright() as pw:
           'cada planeta tiene recurso (⛏/⛽/◈)')
     check(page.evaluate("new Set(planets.map(p => p.res)).size") == 3, 'hay planetas de los 3 recursos')
     check(page.locator('#mineral').inner_text().startswith('⛏'), 'HUD muestra el mineral')
+    check(page.locator('#gas').inner_text().startswith('⛽'), 'v1.7: HUD muestra el gas')
     check('TesterV6' in page.locator('#hud-name').inner_text(), 'HUD muestra el nombre elegido')
+    # v1.7: suministros por planeta — la capital es minera y acumula stock local
+    check(page.evaluate("playerCapital.res") == 'mineral', 'v1.7: la capital es MINERA (regla capital minera)')
+    check(page.evaluate("planets.filter(p => p.capital).every(p => p.res === 'mineral')"),
+          'v1.7: TODAS las capitales (IA incluidas) son mineras')
+    check(page.evaluate("Math.floor(playerCapital.stock)") == 30, 'v1.7: la capital arranca con 30⛏ de stock')
+    stock0 = page.evaluate("playerCapital.stock")
+    page.wait_for_timeout(2000)
+    check(page.evaluate("playerCapital.stock") > stock0, 'v1.7: el stock del planeta crece con el tiempo (+0,4/s)')
 
     # ===== 2. tienda =====
     print('— tienda: compra real con clic —')
@@ -181,9 +192,18 @@ with sync_playwright() as pw:
     check(page.locator('#hangar-build').is_visible()
           and page.locator('#hangar-fleet').is_visible()
           and page.locator('#hangar-store').is_visible(), 'hangar con 3 secciones')
+    check('15⛏' in page.locator('button[data-build="caza"]').inner_text(),
+          'v1.7: el botón de construir muestra el coste ◈ + ⛏')
+    check(page.locator('#hangar-yard').count() == 1
+          and '★' in page.locator('#hangar-yard').inner_text(), 'v1.7: selector de astillero (★ capital)')
+    ore0 = page.evaluate("stockOf(player.color, 'mineral')")
     page.click('button[data-build="caza"]')
     page.wait_for_timeout(300)
     check(page.evaluate("buildQueue.length") == 1, 'clic en construir mete el caza en cola')
+    check(page.evaluate("buildQueue[0].planet") == page.evaluate("planets.indexOf(playerCapital)"),
+          'v1.7: la cola guarda su planeta astillero (la capital por defecto)')
+    ore1 = page.evaluate("stockOf(player.color, 'mineral')")
+    check(ore1 < ore0, f'v1.7: construir un caza descuenta ⛏ del stock ({ore0:.1f} → {ore1:.1f})')
     check('🏗️' in page.locator('#hangar-qstat').inner_text(), 'cuenta atrás visible sin recargar panel')
     page.evaluate("buildQueue[0].t = 0.05")   # acelerar construcción
     page.wait_for_timeout(500)
@@ -250,7 +270,7 @@ with sync_playwright() as pw:
     page.evaluate("player.credits += 300")
     page.evaluate("queueShip('caza')")   # directo, sin panel
     check(page.evaluate("buildQueue.length") == 1, 'construir funciona LEJOS de la capital (órdenes por radio)')
-    page.evaluate("buildQueue.length = 0; player.credits -= 60")   # deshacer: no romper los checks siguientes
+    page.evaluate("buildQueue.length = 0; player.credits -= 60; playerCapital.stock = Math.min(100, playerCapital.stock + 15)")   # deshacer: no romper los checks siguientes (v1.7: devolver también el ⛏)
     page.click('button[data-hact="follow"][data-hi="0"]')   # hangar abierto, 1 caza guardada
     page.wait_for_timeout(250)
     check(page.evaluate("fleetCount()") == 1, 'desplegar funciona LEJOS de la capital (sale y viene sola)')
@@ -306,10 +326,30 @@ with sync_playwright() as pw:
     page.click('#toolbar button[data-panel="hangar"]')   # reabrir (la sección anterior cerró los paneles)
     page.wait_for_timeout(300)
     page.evaluate("player.credits += 200")
+    # v1.7: la avispa pide ⛽ y el jugador aún no tiene planetas de gas
+    check(page.locator('button[data-build="avispa"]').is_disabled(), 'v1.7: sin ⛽ el botón de la avispa queda desactivado')
+    check('Te falta' in (page.locator('button[data-build="avispa"]').get_attribute('title') or ''),
+          'v1.7: el title del botón explica qué recurso falta')
+    page.evaluate("queueShip('avispa')")   # ni por consola: sin ⛽ no entra en cola
+    check(page.evaluate("buildQueue.length") == 0, 'v1.7: sin ⛽ suficiente no se puede encolar la avispa')
+    check('⛽' in page.locator('#notify').inner_text(), 'v1.7: aviso toast de recurso insuficiente')
+    # le damos un planeta de GAS (lejos de toda capital enemiga) y lo soltamos después
+    page.evaluate("""(() => {
+      const caps = planets.filter(p => p.capital && p.owner && p.owner !== player.color);
+      let g = null, bd = -1;
+      for (const p of planets) {
+        if (p.owner || p.res !== 'gas') continue;
+        const d = Math.min(...caps.map(c => (p.x - c.x) ** 2 + (p.y - c.y) ** 2));
+        if (d > bd) { bd = d; g = p; }
+      }
+      window.__gp = g; g.owner = player.color; g.stock = 60;
+    })()""")
+    page.wait_for_timeout(300)
     page.click('button[data-build="avispa"]')
     page.wait_for_timeout(200)
     page.evaluate("buildQueue[0].t = 0.05")
     page.wait_for_timeout(500)
+    page.evaluate("window.__gp.owner = null; window.__gp.stock = 0")   # soltar el planeta de gas (la cola era de la capital)
     check(page.evaluate("hangarShips.join(',')") == 'caza,avispa', 'avispa construida: hangar [caza, avispa]')
     page.click('button[data-hact="pilot"][data-hi="1"]')
     page.wait_for_timeout(300)
@@ -411,6 +451,40 @@ with sync_playwright() as pw:
     page.mouse.up()
     check(page.evaluate("projectiles.length") > 0, 'sin selección el clic vuelve a disparar')
 
+    # ===== 5b2. v1.7: colas por planeta — paralelas, límite 3 y cancelación =====
+    print('— v1.7: colas de construcción por planeta —')
+    page.evaluate("player.credits += 500; playerCapital.stock = 100")
+    page.evaluate("""(() => {
+      // segundo astillero: un planeta propio lejos de toda capital enemiga
+      // (un planeta propio DA VISIÓN — se elige lejano y se suelta al acabar)
+      const caps = planets.filter(p => p.capital && p.owner && p.owner !== player.color);
+      let best = null, bd = -1;
+      for (const p of planets) {
+        if (p.owner || p === playerCapital) continue;
+        const d = Math.min(...caps.map(c => (p.x - c.x) ** 2 + (p.y - c.y) ** 2));
+        if (d > bd) { bd = d; best = p; }
+      }
+      window.__p2 = best; best.owner = player.color;
+    })()""")
+    page.evaluate("queueShip('caza', planets.indexOf(playerCapital))")
+    page.evaluate("for (let i = 0; i < 4; i++) queueShip('caza', planets.indexOf(window.__p2))")
+    check(page.evaluate("buildQueue.length") == 4, 'v1.7: máximo 3 ítems por astillero (el 4.º en el mismo planeta se rechaza)')
+    check('saturado' in page.locator('#notify').inner_text(), 'v1.7: aviso de astillero saturado')
+    t0 = page.evaluate("buildQueue.map(q => q.t)")
+    page.wait_for_timeout(600)
+    t1 = page.evaluate("buildQueue.map(q => q.t)")
+    check(t1[0] < t0[0] and t1[1] < t0[1], 'v1.7: dos planetas construyen EN PARALELO (dos colas avanzan)')
+    check(abs(t1[2] - t0[2]) < 0.01, 'v1.7: en un mismo planeta solo avanza el primer ítem')
+    # perder el planeta astillero cancela su cola (con aviso, sin reembolso)
+    page.evaluate("window.__p2.owner = null")
+    page.wait_for_timeout(400)
+    check(page.evaluate("buildQueue.length") == 1, 'v1.7: perder el astillero CANCELA su cola')
+    check('cancelada' in page.locator('#notify').inner_text(), 'v1.7: notificación de cola cancelada')
+    page.evaluate("buildQueue[0].t = 0.05")
+    page.wait_for_timeout(500)
+    check(page.evaluate("buildQueue.length") == 0 and page.evaluate("hangarShips.length") == 2,
+          'v1.7: la cola de la capital sigue funcionando (caza completado al hangar)')
+
     # ===== 5c. v0.8: IA de facciones — neutralidad, provocación, conquista, minería =====
     print('— v0.8: facciones imperio (IA real) —')
     page.evaluate("prepT = 0")   # terminar la preparación: sin esto nadie dispara
@@ -478,6 +552,19 @@ with sync_playwright() as pw:
     check(page.evaluate("""!window.__minAst.alive || window.__minAst.hp < 2
           || projectiles.some(pr => pr.owner === window.__miner)"""),
           'la IA dispara a asteroides (minería)')
+
+    # v1.7: la IA también paga ⛏ por nave — sin mineral en sus minas no construye
+    page.evaluate("""(() => {
+      const c = window.__conq.color;
+      window.__facC = c;
+      facState[c].credits = 500; facState[c].building = false;
+      for (const p of planets) if (p.owner === c && p.res === 'mineral') p.stock = 0;
+    })()""")
+    page.wait_for_timeout(1500)
+    check(not page.evaluate("facState[window.__facC].building"), 'v1.7: la IA NO construye sin ⛏ en sus minas')
+    page.evaluate("facState[window.__facC].capital.stock = 30")
+    page.wait_for_timeout(1500)
+    check(page.evaluate("facState[window.__facC].building"), 'v1.7: con ⛏ (capital minera) la IA SÍ construye')
 
     # guerra entre facciones IA: solo entonces se atacan entre ellas
     page.evaluate(f"""(() => {{
@@ -555,6 +642,8 @@ with sync_playwright() as pw:
     check(page.locator('#empire').is_visible(), 'TAB abre el panel de imperio')
     body = page.locator('#empire-body').inner_text()
     check('CAPITAL' in body, 'el panel lista tu capital')
+    check('⛏' in body and '⛽' in body, 'v1.7: el panel de imperio muestra los totales ⛏/⛽')
+    check(re.search(r'⛏ \d+/100', body) is not None, 'v1.7: stock por planeta en el panel (tope 100)')
     check('🛰' in body and ('atacando' in body or 'siguiéndote' in body), 'el panel lista la flota con su rol')
     check('Áurea' in body or 'Carmesí' in body or 'Aqua' in body, 'el panel lista las facciones de la galaxia')
     page.evaluate(f"setRel('{other}', FACTION_COLORS.find(c => c !== player.color && c !== '{other}' && c !== '{fac}'), -100)")
@@ -623,11 +712,11 @@ with sync_playwright() as pw:
     # ===== 5e. v1.1: escudos con mineral + reparación · v1.2: victoria real =====
     print('— v1.1: economía estratégica —')
     page.evaluate("player.x = playerCapital.x + playerCapital.r + 10; player.y = playerCapital.y; player.vx = player.vy = 0;")
-    page.evaluate("playerCapital.shield = 50; player.mineral = 10;")
+    page.evaluate("playerCapital.shield = 50; playerCapital.stock = 10;")   # v1.7: el ⛏ vive en el stock del planeta
     page.wait_for_timeout(2000)
-    check(page.evaluate("playerCapital.shield") > 51, 'el escudo de tu planeta se RECARGA con mineral')
-    # la capital puede ser minera (produce mientras consume): margen +1 por producción
-    check(page.evaluate("player.mineral") < 10.5, 'la recarga consume ⛏ mineral')
+    check(page.evaluate("playerCapital.shield") > 51, 'el escudo de tu planeta se RECARGA con ⛏ del stock')
+    # la capital es minera (produce mientras consume): margen +1 por producción
+    check(page.evaluate("stockOf(player.color, 'mineral')") < 10.5, 'la recarga consume ⛏ de tus planetas mineros (v1.7)')
     creds0 = page.evaluate("Math.floor(player.credits)")
     page.evaluate("player.hp = 5;")
     page.wait_for_timeout(2000)
@@ -683,6 +772,8 @@ with sync_playwright() as pw:
     print('— persistencia: CONTINUAR PARTIDA —')
     # congelar la construcción de las facciones para que el recuento sea determinista
     page.evaluate("for (const c in facState) { facState[c].building = false; facState[c].credits = 0; }")
+    # v1.7: provocar un stock conocido y una cola con astillero para verificar su persistencia
+    page.evaluate("player.credits += 100; playerCapital.stock = 100; queueShip('caza', planets.indexOf(playerCapital)); playerCapital.stock = 77")
     fog0 = page.evaluate("explored.reduce((a, v) => a + v, 0)")
     page.evaluate("saveGame()")
     saved = page.evaluate("({credits: Math.floor(player.credits), bots: bots.filter(b => !b.pirate).length, "
@@ -713,7 +804,34 @@ with sync_playwright() as pw:
     check(not page.locator('#tutorial').is_visible(), 'sin tutorial al continuar')
     check(page.evaluate("explored.reduce((a, v) => a + v, 0)") >= fog0,
           f'mapa explorado restaurado ({fog0} celdas)')
+    st = page.evaluate("playerCapital.stock")
+    check(74 <= st <= 82, f'v1.7: el stock de la capital se conserva tras recargar ({st:.1f})')
+    check(page.evaluate("buildQueue.length") == 1
+          and page.evaluate("buildQueue[0].planet") == page.evaluate("planets.indexOf(playerCapital)"),
+          'v1.7: la cola de construcción se restaura con su planeta astillero')
+    check(page.evaluate("planets.filter(p => p.capital && p.owner).every(p => p.res === 'mineral')"),
+          'v1.7: tras cargar, todas las capitales vuelven a ser mineras')
     page.screenshot(path=str(SHOTS / 'ui_continuar.png'))
+
+    # ===== 8b. v1.7: migración de saves viejos (sin stock ni astillero en la cola) =====
+    print('— v1.7: migración de saves viejos —')
+    page.evaluate("""(() => {
+      inGame = false;   // que el saveGame del beforeunload NO pise el save manipulado
+      const d = JSON.parse(localStorage.getItem('pixelfleet_save_v2'));
+      d.player.mineral = 25;                          // el viejo stock global del jugador
+      for (const sp of d.planets) delete sp.stock;    // save viejo: sin stock por planeta
+      for (const q of d.buildQueue) delete q.planet;  // ni astillero en la cola
+      localStorage.setItem('pixelfleet_save_v2', JSON.stringify(d));
+    })()""")
+    page.reload()
+    page.wait_for_timeout(500)
+    check('CONTINUAR PARTIDA' in page.locator('#btn-play').inner_text(), 'v1.7: el save viejo sigue siendo válido')
+    page.click('#btn-play')
+    page.wait_for_timeout(1500)
+    check(page.evaluate("Math.floor(playerCapital.stock)") >= 54,
+          'v1.7: el viejo player.mineral se vuelca a la capital (30⛏ base + 25)')
+    check(page.evaluate("buildQueue.every(q => q.planet === planets.indexOf(playerCapital))"),
+          'v1.7: entradas de cola viejas sin planeta se asignan a la capital')
 
     # ===== 9. borrar partida =====
     print('— ajustes: BORRAR PARTIDA —')
