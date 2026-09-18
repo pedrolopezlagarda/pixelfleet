@@ -274,12 +274,12 @@ body {
 #fleet-menu #fm-planets button { color: #8aff80; border-color: #2d4a2d; font-size: 10px; }
 #fleet-menu #fm-planets button:hover { border-color: #8aff80; }
 
-/* ===== v2.0 — panel permanente de flota (izquierda, bajo el HUD) ===== */
+/* ===== v2.0 — panel permanente de flota (derecha, entre la clasificación y el minimapa) ===== */
 #fleet-panel {
-  position: fixed; left: 14px; top: 108px; z-index: 5; width: 216px;
+  position: fixed; right: 14px; top: 50%; transform: translateY(-50%); z-index: 5; width: 216px;
   background: rgba(11,16,48,.88); border: 3px solid #44557a;
   box-shadow: 0 4px 0 #0a1628; padding: 6px;
-  max-height: calc(50vh - 140px); display: flex; flex-direction: column;
+  max-height: 46vh; display: flex; flex-direction: column;
 }
 #fp-head { font-size: 12px; color: #7ef9ff; letter-spacing: 1px; display: flex;
   align-items: center; gap: 6px; }
@@ -304,3 +304,8 @@ body {
 #fp-orders button.armed { border-color: #ffd166; background: rgba(38,30,8,.95); }
 #fp-defp-sel { flex: 1; min-width: 0; font-family: inherit; font-size: 9px; height: 23px;
   background: #101a33; color: #8aff80; border: 2px solid #2d4a2d; }
+
+/* fila del jugador (v2.0: piloto automático) */
+.fp-row.fp-player { border-bottom: 2px solid #44557a; margin-bottom: 3px; padding-bottom: 5px; }
+.fp-row.fp-player .fp-name { color: #ffd166; }
+.fp-row .fp-order.auto { color: #ffd166; }

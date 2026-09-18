@@ -208,9 +208,13 @@ El roadmap v0.5 quedó completo en v1.2 (A-F + G/H). Nuevas líneas:
       (simetría total: su tope ya no son planetas sino su hangarLvl). **Rejilla
       espacial** (250 u) + caches por frame para que 300+ naves no maten el
       rendimiento (targeting, colisiones, capturas). **Panel permanente de
-      flota** a la izquierda: lista todas las naves con su orden/HP, clic =
-      (de)seleccionar, botones de orden (➡️/⚔️ armados esperan clic en el mapa,
-      🛡️ con selector de planeta, 👥 🏰 ✋ 🛬 inmediatas, TODAS). Saves de
+      flota** a la derecha (entre clasificación y minimapa): lista TU nave y
+      todas las desplegadas con su orden/HP, clic = (de)seleccionar, botones de
+      orden (➡️/⚔️ armados esperan clic en el mapa, 🛡️ con selector de planeta,
+      👥 🏰 ✋ 🛬 inmediatas, TODAS). **Piloto automático** (feedback de Pedro):
+      dar una orden a tu propia nave la pone en 🤖 automático (la IA la vuela
+      con la disciplina de los wingmen; WASD/clic/ESPACIO = control manual al
+      instante; se guarda en el save). Saves de
       mundos 8000/12000 invalidados por el marcador `world`.
 - [ ] **Asedios con defensas orbitales** y **misiones-historia** (siguientes,
       pedido de Pedro).

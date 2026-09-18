@@ -37,7 +37,7 @@ muestra el atajo de teclado). No hace falta memorizar nada.
 | **SHIFT + arrastrar** | Seleccionar naves de tu flota (cuadro, estilo Age of Empires) |
 | **Clic** (con naves seleccionadas) | Mover el grupo a ese punto |
 | **Clic derecho** | Menú de órdenes para la selección (o la nave bajo el cursor) |
-| **Panel de flota** (izquierda) | Lista de todas tus naves: clic selecciona, botones de orden (v2.0) |
+| **Panel de flota** (derecha) | Lista de tus naves: clic selecciona, botones de orden; tu nave obedece en 🤖 automático (v2.0) |
 | **ESPACIO** | Impulso (gasta combustible) |
 | **B** | Tienda de mejoras |
 | **F** | Panel de diplomacia |
@@ -149,14 +149,21 @@ stock (`P-123 ● ⛏ 42`).
   frame (mismas reglas, sin scans O(n²)).
 
 ### 🛰️ Panel de flota permanente (v2.0)
-A la izquierda, bajo el HUD, siempre visible en partida: **todas tus naves
-desplegadas** con su orden actual y su HP. Clic en una fila = (de)seleccionar esa
-nave (es la misma selección del RTS: SHIFT+arrastre y panel se sincronizan).
-Botones de orden para la selección: **➡️ MOVER** y **⚔️ ATACAR** quedan «armados»
-y el siguiente clic en el mapa fija el objetivo (ESC cancela); **🛡️ DEFENDER** el
-planeta elegido en el selector, **👥 SEGUIRME**, **🏰 GUARNICIÓN**, **✋ PARAR** y
-**🛬 RECOGER** se aplican al instante. Botón **TODAS** para seleccionar la flota
-entera. Como siempre, dar una orden suelta la selección.
+A la **derecha**, entre la clasificación y el minimapa, siempre visible en
+partida: **tu nave (★ TÚ) y todas las desplegadas** con su orden actual y su HP.
+Clic en una fila = (de)seleccionar esa nave (es la misma selección del RTS:
+SHIFT+arrastre y panel se sincronizan). Botones de orden para la selección:
+**➡️ MOVER** y **⚔️ ATACAR** quedan «armados» y el siguiente clic en el mapa fija
+el objetivo (ESC cancela); **🛡️ DEFENDER** el planeta elegido en el selector,
+**👥 SEGUIRME**, **🏰 GUARNICIÓN**, **✋ PARAR** y **🛬 RECOGER** se aplican al
+instante. Botón **TODAS** para seleccionar la flota entera (incluida tu nave).
+Como siempre, dar una orden suelta la selección.
+
+**🤖 Piloto automático (v2.0)**: si seleccionas TU nave en el panel y le das una
+orden, la IA la vuela sola — se mueve, orbita el planeta a defender y dispara
+con la misma disciplina que tus wingmen (solo en guerra, provocación o contra
+piratas). Tocar **WASD, ESPACIO o el clic** te devuelve el control manual al
+instante. El automático también se guarda en la partida.
 
 ### 🎖️ Control RTS de flota (v0.7)
 Tus naves desplegadas se controlan como en un **Age of Empires**:
@@ -341,7 +348,7 @@ Posiciones a 10 Hz, disparos y chat retransmitidos **por sala**.
 | `style.css` | Estilo retro pixelado |
 | `game.js` | Motor completo + sistemas v0.3/v0.4/v0.5/v0.6 |
 | `server.js` | Servidor WebSocket multijugador con salas |
-| `tools/verify_ui.py` | Test E2E real (Playwright): 212 checks — menús, clics, tienda/tecnología, flota, hangar (60 niveles), notificaciones, RTS, panel de flota, facciones IA, niebla, economía, eventos, victoria, persistencia, zoom, suministros (v1.7), sistemas solares y daño/ evasión solar (v2.0) |
+| `tools/verify_ui.py` | Test E2E real (Playwright): 221 checks — menús, clics, tienda/tecnología, flota, hangar (60 niveles), notificaciones, RTS, panel de flota, facciones IA, niebla, economía, eventos, victoria, persistencia, zoom, suministros (v1.7), sistemas solares y daño/ evasión solar (v2.0) |
 | `README.md` | Este documento |
 
 ### Tests E2E

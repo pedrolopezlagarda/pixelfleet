@@ -63,6 +63,8 @@ const player = {
   upgrades: { motor: 0, cadencia: 0, blindaje: 0, deposito: 0 },
   tech: {},                   // v1.4: tecnologías de nivel 2 (excluyentes por rama)
   hangarLvl: 0,               // v1.6: nivel de hangar — limita flota y almacén (se compra con ◈)
+  auto: false,                // v2.0: piloto automático (la IA vuela tu nave según `role`)
+  role: 'hold', ox: null, oy: null, oplanet: null,   // v2.0: orden activa en automático
   deflCd: 0,                  // v1.4: cooldown del escudo deflector
   ship: 'caza',                 // modelo actual (catálogo SHIPS, v0.6)
 };
@@ -699,10 +701,10 @@ addEventListener('mousedown', e => {
     const act = pendingOrder;
     fpDisarm();
     orderGroup(act, clamp(w.x, 20, WORLD.w - 20), clamp(w.y, 20, WORLD.h - 20), null);
-    selection.clear();
+    selection.clear(); playerSel = false;
     return;
   }
-  if (selection.size) { orderMoveTo(e.clientX, e.clientY); return; }
+  if (selection.size || playerSel) { orderMoveTo(e.clientX, e.clientY); return; }
   mouse.down = true;
 });
 addEventListener('mouseup',   () => { mouse.down = false; if (selectBox) selFinish(); });
@@ -897,6 +899,18 @@ function update(dt) {
     const boostMul = player.tech.hipermotor ? 3.2 : 2.2;
     const accel = 45 * getShipMod().accel * (1 + 0.15 * player.upgrades.motor) *
                   (boosting ? boostMul : (player.tech.crucero ? 1.35 : 1));   // v1.0: velocidades ÷3
+    // v2.0: piloto automático — cualquier entrada manual (WASD/clic/ESPACIO) recupera el mando
+    if (player.auto) {
+      if (keys['w'] || keys['a'] || keys['s'] || keys['d'] ||
+          keys['arrowup'] || keys['arrowdown'] || keys['arrowleft'] || keys['arrowright'] ||
+          keys[' '] || mouse.down) {
+        player.auto = false; player.role = 'hold';
+        notify('🕹️ Control manual: piloto automático desconectado.', 'info', 'auto-off', 2);
+      } else {
+        playerAutoUpdate(dt, accel);
+      }
+    }
+    if (!player.auto) {
     let ax = 0, ay = 0;
     if (keys['w'] || keys['arrowup'])    ay -= 1;
     if (keys['s'] || keys['arrowdown'])  ay += 1;
@@ -924,6 +938,7 @@ function update(dt) {
       player.shootCd = 0.22 * getShipMod().rof * (player.tech.enjambre ? 1 / 1.6 : 1) * (player.tech.blaster ? 1 / 0.75 : 1) / (1 + 0.25 * player.upgrades.cadencia);
       net.sendShoot();
     }
+    }   // fin control manual (v2.0: en automático manda playerAutoUpdate)
 
     // combustible (v1.0: solo se reposta junto a planetas — propios rápido,
     // aliados medio, neutros lento; en mitad del espacio NADA.
@@ -1767,6 +1782,7 @@ function newGameInit() {
   player.ship = 'caza';
   player.tech = {}; player.deflCd = 0;   // v1.4
   player.hangarLvl = 0;   // v1.6: hangar nv.1 en partida nueva
+  player.auto = false; player.role = 'hold'; player.ox = player.oy = player.oplanet = null;   // v2.0
   hangarShips.length = 0;
   buildQueue.length = 0;
   shipyardIdx = null;   // v1.7: astillero por defecto = la capital
@@ -1955,6 +1971,8 @@ function saveGame() {
         upgrades: player.upgrades, ship: player.ship,
         tech: player.tech,   // v1.4
         hangarLvl: player.hangarLvl,   // v1.6
+        auto: player.auto, role: player.role,   // v2.0: piloto automático
+        ox: player.ox, oy: player.oy, oplanet: player.oplanet,
       },
       capitalIdx: planets.indexOf(playerCapital),
       prepT: Math.max(0, prepT),
@@ -2007,6 +2025,10 @@ function applySave(d) {
   player.hangarLvl = d.player.hangarLvl ?? Math.max(0, Math.min(HANGAR_LVL_MAX,
     Math.ceil(((d.planets || []).filter(sp => sp.owner === player.color).length - 1) / 2)));
   player.ship = d.player.ship || 'caza';
+  // v2.0: piloto automático restaurado (tu nave sigue ejecutando su orden)
+  player.auto = !!d.player.auto; player.role = d.player.role || 'hold';
+  player.ox = d.player.ox ?? null; player.oy = d.player.oy ?? null;
+  player.oplanet = d.player.oplanet ?? null;
   // mundo: reset dinámico sobre el universo determinista
   for (const p of planets) {
     p.owner = null; p.shield = 0; p.shieldMax = 25;
@@ -2840,6 +2862,7 @@ update = function (dt) {
    Las órdenes se guardan en el save (ox/oy/oplanet de cada nave).
    ========================================================= */
 const selection = new Set();          // uids de wingmen seleccionados
+let playerSel = false;                // v2.0: tu propia nave seleccionada en el panel de flota
 let selectBox = null;                 // {x0,y0,x1,y1} en px de cliente durante el arrastre
 const fleetMenuEl = document.getElementById('fleet-menu');
 
@@ -2880,7 +2903,7 @@ function selFinish() {
 }
 function orderGroup(role, x, y, pidx) {
   const list = selectedShips();
-  if (!list.length) { selection.clear(); return; }
+  if (!list.length && !playerSel) { selection.clear(); return; }   // v2.0: también vale tener seleccionada TU nave
   for (const b of list) {
     b.role = role;
     b.ox = x == null ? b.x : x;
@@ -2888,21 +2911,32 @@ function orderGroup(role, x, y, pidx) {
     b.oplanet = pidx ?? null;
     b.waypoint = null;
   }
+  // v2.0: tu propia nave obedece la orden entrando en piloto automático
+  // ('follow' no aplica: no puedes seguirte a ti mismo; 'recall' no pasa por aquí)
+  let n = list.length;
+  if (playerSel && player.alive && role !== 'follow') {
+    player.role = role;
+    player.ox = x == null ? player.x : x;
+    player.oy = y == null ? player.y : y;
+    player.oplanet = pidx ?? null;
+    player.auto = true;
+    n++;
+  }
   const names = {
     move: 'en ruta al punto marcado', attack: 'atacando la zona marcada',
     defendP: 'defendiendo ' + (planets[pidx] ? planets[pidx].name : 'un planeta'),
     follow: 'siguiéndote', garrison: 'en guarnición sobre la capital',
     hold: 'manteniendo posición',
   };
-  chatSys('🛰️ Orden para ' + list.length + ' nave(s): ' + (names[role] || role) + '.');
+  chatSys('🛰️ Orden para ' + n + ' nave(s): ' + (names[role] || role) + '.');
   if (typeof hangarEl !== 'undefined' && !hangarEl.classList.contains('hidden')) renderHangar();
   saveGame();
 }
 function orderMoveTo(cx, cy) {
-  if (!selectedShips().length) { selection.clear(); return; }
+  if (!selectedShips().length && !playerSel) { selection.clear(); return; }
   const w = clientToWorld(cx, cy);
   orderGroup('move', clamp(w.x, 20, WORLD.w - 20), clamp(w.y, 20, WORLD.h - 20), null);
-  selection.clear();   // v0.7.1: dar la orden suelta la selección (vuelves a pilotar/disparar)
+  selection.clear(); playerSel = false;   // v0.7.1: dar la orden suelta la selección (vuelves a pilotar/disparar)
 }
 
 /* --- menú contextual de órdenes (botón derecho) --- */
@@ -2963,21 +2997,78 @@ addEventListener('mousedown', e => {
     closeFleetMenu();
 });
 addEventListener('keydown', e => {
-  if (e.key === 'Escape') { selection.clear(); closeFleetMenu(); fpDisarm(); }   // v2.0: también desarma la orden del panel
+  if (e.key === 'Escape') { selection.clear(); playerSel = false; closeFleetMenu(); fpDisarm(); }   // v2.0: también desarma la orden del panel
 });
 // limpieza automática: naves destruidas o recogidas salen de la selección
 const _update7 = update;
 update = function (dt) {
   _update7(dt);
   if (selection.size && !selectedShips().length) selection.clear();
+  if (!player.alive) { playerSel = false; player.auto = false; }   // v2.0: al morir tu nave, el automático muere con ella
   // v0.8: la provocación de facciones se enfría con el tiempo
   for (const c in playerAggro) { playerAggro[c] -= dt; if (playerAggro[c] <= 0) delete playerAggro[c]; }
 };
 const _back7 = backToMenu;
-backToMenu = function () { selection.clear(); closeFleetMenu(); _back7(); };
+backToMenu = function () { selection.clear(); playerSel = false; closeFleetMenu(); _back7(); };
 
 /* =========================================================
-   v2.0 — PANEL PERMANENTE DE FLOTA (izquierda, bajo el HUD)
+   v2.0 — PILOTO AUTOMÁTICO DE TU NAVE
+   Si tu nave está seleccionada en el panel de flota y recibe una orden,
+   la IA la vuela sola (misma disciplina de fuego que los wingmen: solo
+   guerra, provocación o piratas). WASD/clic/ESPACIO = control manual.
+   ========================================================= */
+function playerAutoUpdate(dt, accel) {
+  let tx = null, ty = null;
+  if ((player.role === 'move' || player.role === 'attack') && player.ox != null) {
+    tx = player.ox; ty = player.oy;
+  } else if (player.role === 'defendP' || player.role === 'garrison') {
+    const p = player.role === 'garrison' ? playerCapital : planets[player.oplanet];
+    if (p && p.owner === player.color) {   // órbita lenta del objetivo
+      const a = performance.now() / 3000;
+      tx = p.x + Math.cos(a) * (p.r + 110); ty = p.y + Math.sin(a) * (p.r + 110);
+    } else player.role = 'hold';
+  }
+  if (tx == null) {   // hold: frenar y quedarse
+    player.vx *= Math.pow(0.02, dt); player.vy *= Math.pow(0.02, dt);
+  } else {
+    const dd = Math.sqrt(dist2(player.x, player.y, tx, ty));
+    if (player.role === 'move' && dd < 40) player.role = 'hold';
+    else {
+      const wa = sunAvoid(player.x, player.y, Math.atan2(ty - player.y, tx - player.x));
+      player.angle = angleLerp(player.angle, wa, 1 - Math.pow(0.05, dt));
+      if (dd > 30) {
+        player.vx += Math.cos(player.angle) * accel * dt;
+        player.vy += Math.sin(player.angle) * accel * dt;
+      }
+    }
+  }
+  player.vx *= Math.pow(0.12, dt); player.vy *= Math.pow(0.12, dt);
+  player.x = clamp(player.x + player.vx * dt, 16, WORLD.w - 16);
+  player.y = clamp(player.y + player.vy * dt, 16, WORLD.h - 16);
+  // fuego con disciplina (v0.8): solo guerra declarada, provocación o piratas
+  player.shootCd -= dt;
+  if (player.shootCd <= 0 && prepT <= 0) {
+    let tgt = null, td = 420 * 420;
+    gridEach(player.x, player.y, 420, o => {
+      if (!o.alive || o.color === player.color) return false;
+      if ((standings[o.color] || 0) > -30 && (playerAggro[o.color] || 0) <= 0 && !o.pirate) return false;
+      const d = dist2(o.x, o.y, player.x, player.y);
+      if (d < td) { td = d; tgt = o; }
+      return false;
+    });
+    if (tgt) {
+      const ta = Math.atan2(tgt.y - player.y, tgt.x - player.x) + rnd(-0.12, 0.12);
+      shoot(player.x + Math.cos(ta) * 8, player.y + Math.sin(ta) * 8, ta, player.color, player,
+            player.tech.blaster ? 2 : 1);
+      player.shootCd = 0.22 * getShipMod().rof * (player.tech.enjambre ? 1 / 1.6 : 1) * (player.tech.blaster ? 1 / 0.75 : 1) / (1 + 0.25 * player.upgrades.cadencia);
+      net.sendShoot();
+    }
+  }
+}
+
+/* =========================================================
+   v2.0 — PANEL PERMANENTE DE FLOTA (a la derecha, entre la
+   clasificación y el minimapa)
    Lista TODAS las naves desplegadas con su orden y HP; clic en una fila la
    (de)selecciona (misma `selection` que el RTS, se sincronizan solos); los
    botones dan órdenes a la selección — MOVER/ATACAR arman la orden y el
@@ -3012,14 +3103,23 @@ function roleLabelFP(b) {
 function fpRender() {
   const ships = bots.filter(b => b.built && b.alive);
   const own = planets.map((p, i) => [p, i]).filter(([p]) => p.owner === player.color);
-  const sig = ships.map(b => b.uid + ':' + b.role + ':' + (b.oplanet == null ? '' : b.oplanet)).join('|') +
+  const sig = player.ship + '|' +   // v2.0: la fila de TU nave se reconstruye si cambias de nave
+    ships.map(b => b.uid + ':' + b.role + ':' + (b.oplanet == null ? '' : b.oplanet)).join('|') +
     '#' + own.map(([p, i]) => i).join(',');
-  fpCountEl.textContent = ships.length + '/' + fleetMax() + (selection.size ? ' · ' + selection.size + ' sel.' : '');
+  const nSel = selection.size + (playerSel ? 1 : 0);
+  fpCountEl.textContent = ships.length + '/' + fleetMax() + (nSel ? ' · ' + nSel + ' sel.' : '');
   if (sig !== fpSig) {
     fpSig = sig;
     fpRows = {};
-    fpListEl.innerHTML = ships.length ? '' :
-      '<div id="fp-empty">Sin naves desplegadas: construye en el hangar (H) y despliega.</div>';
+    // v2.0: primera fila = TU nave (clic = seleccionarla para darle órdenes en automático)
+    const pro = document.createElement('div');
+    pro.className = 'fp-row fp-player';
+    pro.innerHTML = '<span class="fp-name">★ TÚ · ' + shipDef(player.ship).name + '</span>' +
+      '<span class="fp-order"></span><span class="fp-hp"></span>';
+    pro.onclick = () => { playerSel = !playerSel; };
+    fpListEl.innerHTML = '';
+    fpListEl.appendChild(pro);
+    fpRows['player'] = { row: pro, hp: pro.querySelector('.fp-hp'), order: pro.querySelector('.fp-order') };
     for (const b of ships) {
       const row = document.createElement('div');
       row.className = 'fp-row';
@@ -3032,10 +3132,21 @@ function fpRender() {
       fpListEl.appendChild(row);
       fpRows[b.uid] = { row, hp: row.querySelector('.fp-hp'), order: row.querySelector('.fp-order') };
     }
+    if (!ships.length) fpListEl.insertAdjacentHTML('beforeend',
+      '<div id="fp-empty">Sin más naves desplegadas: construye en el hangar (H) y despliega.</div>');
     fpDefpSel.innerHTML = own.map(([p, i]) =>
       '<option value="' + i + '">' + (p === playerCapital ? '★ ' : '') + p.name + '</option>').join('');
   }
   // por tick: solo textos y resaltado en nodos existentes
+  const pr = fpRows['player'];
+  if (pr) {
+    pr.hp.textContent = Math.ceil(player.hp) + '❤';
+    pr.hp.classList.toggle('low', player.hp <= player.maxHp * 0.35);
+    const pl = player.auto ? '🤖 ' + roleLabelFP(player) : '🕹️ manual';
+    if (pr.order.textContent !== pl) pr.order.textContent = pl;
+    pr.order.classList.toggle('auto', player.auto);
+    pr.row.classList.toggle('sel', playerSel);
+  }
   for (const b of ships) {
     const r = fpRows[b.uid];
     if (!r) continue;
@@ -3048,10 +3159,11 @@ function fpRender() {
 }
 $('fp-all').onclick = () => {
   for (const b of bots) if (b.built && b.alive) selection.add(b.uid);
+  playerSel = player.alive;   // v2.0: TODAS incluye tu propia nave
 };
 document.querySelectorAll('#fp-orders button[data-fpo]').forEach(btn => btn.onclick = () => {
   const act = btn.dataset.fpo;
-  if (!selectedShips().length) { notify('🛰️ Selecciona naves primero (clic en la lista o SHIFT+arrastre).', 'info', 'fp-sel', 3); return; }
+  if (!selectedShips().length && !playerSel) { notify('🛰️ Selecciona naves primero (clic en la lista o SHIFT+arrastre).', 'info', 'fp-sel', 3); return; }
   if (act === 'move' || act === 'attack') {
     fpDisarm();
     pendingOrder = act;
@@ -3068,8 +3180,11 @@ document.querySelectorAll('#fp-orders button[data-fpo]').forEach(btn => btn.oncl
   if (act === 'follow')   orderGroup('follow', null, null, null);
   if (act === 'garrison') orderGroup('garrison', null, null, null);
   if (act === 'hold')     orderGroup('hold', null, null, null);
-  if (act === 'recall')   { for (const b of selectedShips()) recallShip(b.uid); }
-  selection.clear();   // v0.7.1: toda orden dada suelta la selección
+  if (act === 'recall') {
+    for (const b of selectedShips()) recallShip(b.uid);
+    if (playerSel) notify('🛬 Tu nave no puede recogerse: la pilotas tú (usa GUARNICIÓN para mandarla sola a la capital).', 'info', 'fp-rec', 4);
+  }
+  selection.clear(); playerSel = false;   // v0.7.1: toda orden dada suelta la selección
 });
 // tick del panel: 4 veces por segundo basta (estado, HP, resaltado)
 const _updateFP = update;

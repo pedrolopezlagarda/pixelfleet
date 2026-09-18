@@ -512,20 +512,20 @@ with sync_playwright() as pw:
     page.mouse.up()
     check(page.evaluate("projectiles.length") > 0, 'sin selección el clic vuelve a disparar')
 
-    # ===== 5b3. v2.0: panel permanente de flota (izquierda) =====
+    # ===== 5b3. v2.0: panel permanente de flota (derecha) =====
     print('— v2.0: panel de flota permanente —')
     check(page.locator('#fleet-panel').is_visible(), 'panel de flota visible en partida')
-    check(page.locator('.fp-row').count() == 1, 'la nave desplegada aparece en la lista')
-    check('atacando' in page.locator('.fp-row .fp-order').inner_text(),
+    check(page.locator('.fp-row:not(.fp-player)').count() == 1, 'la nave desplegada aparece en la lista')
+    check('atacando' in page.locator('.fp-row:not(.fp-player) .fp-order').inner_text(),
           'la fila muestra la orden actual (atacando)')
     page.click('#fp-orders button[data-fpo="follow"]')   # sin selección: no debe aplicar nada
     page.wait_for_timeout(150)
     check(page.evaluate("bots.find(b => b.built).role") == 'attack', 'orden sin selección no se aplica (aviso)')
-    page.click('.fp-row')
+    page.click('.fp-row:not(.fp-player)')
     page.wait_for_timeout(400)   # el resaltado se aplica en el tick del panel (0,25 s)
     check(page.evaluate("selection.size") == 1, 'clic en la fila selecciona la nave (misma selección RTS)')
-    check('sel' in (page.locator('.fp-row').get_attribute('class') or ''), 'la fila se resalta al seleccionar')
-    page.click('.fp-row')
+    check('sel' in (page.locator('.fp-row:not(.fp-player)').get_attribute('class') or ''), 'la fila se resalta al seleccionar')
+    page.click('.fp-row:not(.fp-player)')
     page.wait_for_timeout(150)
     check(page.evaluate("selection.size") == 0, 'clic de nuevo la deselecciona')
     page.click('#fp-all')
@@ -536,7 +536,7 @@ with sync_playwright() as pw:
     check(page.evaluate("bots.find(b => b.built).role") == 'follow', 'SEGUIRME desde el panel')
     check(page.evaluate("selection.size") == 0, 'la orden del panel también suelta la selección (v0.7.1)')
     # MOVER armado: el siguiente clic en el mapa fija el objetivo
-    page.click('.fp-row')
+    page.click('.fp-row:not(.fp-player)')
     page.wait_for_timeout(100)
     page.click('#fp-orders button[data-fpo="move"]')
     page.wait_for_timeout(100)
@@ -549,7 +549,7 @@ with sync_playwright() as pw:
     check(page.evaluate("pendingOrder") is None, 'la orden se desarma tras aplicarse')
     check(page.evaluate("selection.size") == 0, 'y también suelta la selección')
     # ATACAR armado y cancelado con ESC (no debe aplicarse)
-    page.click('.fp-row')
+    page.click('.fp-row:not(.fp-player)')
     page.wait_for_timeout(100)
     page.click('#fp-orders button[data-fpo="attack"]')
     page.wait_for_timeout(100)
@@ -559,13 +559,44 @@ with sync_playwright() as pw:
     check(page.evaluate("pendingOrder") is None and page.evaluate("bots.find(b => b.built).role") == 'move',
           'ESC cancela la orden armada sin aplicarla')
     # RECOGER desde el panel
-    page.click('.fp-row')
+    page.click('.fp-row:not(.fp-player)')
     page.wait_for_timeout(100)
     page.click('#fp-orders button[data-fpo="recall"]')
     page.wait_for_timeout(400)
     check(page.evaluate("fleetCount()") == 0 and page.evaluate("hangarShips.length") == 2,
           'RECOGER desde el panel devuelve la nave al hangar')
     check(page.locator('#fp-empty').count() == 1, 'sin naves desplegadas el panel muestra el estado vacío')
+    # v2.0: el panel está a la DERECHA (entre la clasificación y el minimapa)
+    check(page.evaluate("document.getElementById('fleet-panel').getBoundingClientRect().left > innerWidth / 2"),
+          'panel de flota a la derecha de la pantalla')
+    # v2.0: tu propia nave en el panel + piloto automático
+    check(page.locator('.fp-row.fp-player').count() == 1, 'tu nave aparece en el panel (★ TÚ)')
+    check('manual' in page.locator('.fp-row.fp-player .fp-order').inner_text(), 'tu nave empieza en manual')
+    page.click('.fp-row.fp-player')
+    page.wait_for_timeout(400)
+    check(page.evaluate("playerSel") == True, 'clic en tu fila selecciona tu nave')
+    page.click('#fp-orders button[data-fpo="hold"]')
+    page.wait_for_timeout(200)
+    check(page.evaluate("player.auto") == True and page.evaluate("player.role") == 'hold',
+          'dar orden a tu nave la pone en AUTOMÁTICO')
+    check('🤖' in page.locator('.fp-row.fp-player .fp-order').inner_text(), 'la fila muestra 🤖 automático')
+    page.click('.fp-row.fp-player')
+    page.wait_for_timeout(100)
+    page.click('#fp-orders button[data-fpo="move"]')
+    page.wait_for_timeout(100)
+    page.mouse.click(900, 300)
+    page.wait_for_timeout(150)
+    check(page.evaluate("player.role") == 'move' and page.evaluate("player.auto"),
+          'MOVER armado también vale para tu nave')
+    d0 = page.evaluate("Math.hypot(player.ox - player.x, player.oy - player.y)")
+    page.wait_for_timeout(2000)
+    d1 = page.evaluate("Math.hypot(player.ox - player.x, player.oy - player.y)")
+    check(d1 < d0, f'el piloto automático vuela hacia el objetivo ({d0:.0f} → {d1:.0f})')
+    page.keyboard.down('w')
+    page.wait_for_timeout(250)
+    page.keyboard.up('w')
+    page.wait_for_timeout(150)
+    check(page.evaluate("player.auto") == False, 'WASD desconecta el piloto automático (control manual)')
     # dejar la partida como la esperan los tests de persistencia (1 nave con orden attack + ox/oy)
     page.evaluate("""(() => {
       deployShip(0, 'follow');
