@@ -6,7 +6,7 @@
    Multijugador simulado localmente + servidor WS preparado.
    ========================================================= */
 
-const WORLD = { w: 12000, h: 12000 };   // v1.0: mundo grande — cruzarlo es una decisión de partida
+const WORLD = { w: 24000, h: 24000 };   // v2.0: galaxia de sistemas solares — cruzarla es una decisión de partida
 const canvas = document.getElementById('canvas');
 const ctx = canvas.getContext('2d');
 ctx.imageSmoothingEnabled = false;
@@ -160,6 +160,35 @@ function makePlanet(r, rng) {
   return s;
 }
 
+/* v2.0: soles pixel-art — disco amarillo/naranja con gránulos y halo suave */
+const SUN_PAL = ['#ffd166', '#ff9f5a', '#fff3b0', '#e36414'];
+const SUN_HALO = 0.35;   // proporción del radio dedicada al halo en el sprite
+function makeSun(r, rng) {
+  const pad = Math.ceil(r * SUN_HALO);
+  const s = document.createElement('canvas');
+  s.width = s.height = (r + pad) * 2;
+  const c = s.getContext('2d');
+  const cxy = r + pad;
+  for (let y = 0; y < s.height; y++) for (let x = 0; x < s.width; x++) {
+    const dx = x - cxy + 0.5, dy = y - cxy + 0.5;
+    const d = Math.sqrt(dx * dx + dy * dy);
+    if (d > r + pad) continue;
+    if (d > r) {   // halo que se apaga hacia fuera
+      c.fillStyle = 'rgba(255,159,90,' + ((1 - (d - r) / pad) * 0.35).toFixed(2) + ')';
+      c.fillRect(x, y, 1, 1);
+      continue;
+    }
+    let col;
+    if (d > r * 0.9) col = SUN_PAL[3];          // limbo más oscuro
+    else if (rng() < 0.06) col = SUN_PAL[2];    // destellos claros
+    else if (rng() < 0.12) col = SUN_PAL[1];    // gránulos naranjas
+    else col = SUN_PAL[0];
+    c.fillStyle = col;
+    c.fillRect(x, y, 1, 1);
+  }
+  return s;
+}
+
 /* ---------- generación del mundo ---------- */
 // v0.6: mundo DETERMINISTA — mismo universo en cada carga (base de la persistencia)
 const rngWorld = mulberry32(1234567);
@@ -196,27 +225,97 @@ function takeStock(color, res, n) {
   }
   return true;
 }
+/* ---------- v2.0: sistemas solares ----------
+   12 soles, cada uno con 4-6 planetas en órbitas (sun.r + 450 + k·480).
+   Todo determinista (misma seed): los soles NO se guardan en el save —
+   se regeneran igual en cada carga. */
+const suns = [];
+{
+  // Rejilla 4×3 con jitter + relajación por repulsión: con 12 sistemas en
+  // 24000² el «mejor de N aleatorios» dejaba soles a ~1200 u (el voraz
+  // secuencial empaqueta mal). La rejilla garantiza ~4200 u de base y la
+  // relajación empuja a los pares demasiado juntos hasta ~5000 u.
+  const SUN_M = 3400;   // margen: caben sus órbitas dentro del mundo
+  const SUN_SEP = 5000;
+  for (let i = 0; i < 12; i++) {
+    const col = i % 4, row = Math.floor(i / 4);
+    const r = rndiW(150, 220);
+    suns.push({
+      x: SUN_M + r + (WORLD.w - 2 * (SUN_M + r)) * (col + 0.5) / 4 + rndW(-150, 150),
+      y: SUN_M + r + (WORLD.h - 2 * (SUN_M + r)) * (row + 0.5) / 3 + rndW(-150, 150),
+      r, orbits: [], sprite: makeSun(r, rngWorld),
+    });
+  }
+  for (let it = 0; it < 400; it++) {
+    let moved = false;
+    for (let i = 0; i < suns.length; i++) for (let j = i + 1; j < suns.length; j++) {
+      const a = suns[i], b = suns[j];
+      let dx = b.x - a.x, dy = b.y - a.y;
+      let d = Math.sqrt(dx * dx + dy * dy) || 1;
+      if (d >= SUN_SEP) continue;
+      const push = (SUN_SEP - d) * 0.3;
+      dx /= d; dy /= d;
+      a.x -= dx * push; a.y -= dy * push;
+      b.x += dx * push; b.y += dy * push;
+      moved = true;
+    }
+    for (const s of suns) {
+      s.x = clamp(s.x, SUN_M + s.r, WORLD.w - SUN_M - s.r);
+      s.y = clamp(s.y, SUN_M + s.r, WORLD.h - SUN_M - s.r);
+    }
+    if (!moved) break;
+  }
+}
 const planets = [];
-for (let i = 0; i < 64; i++) {   // v1.0: 64 planetas (el mundo creció a 12000×12000)
-  const r = rndiW(24, 70);
-  planets.push({
-    idx: i,           // v1.6: índice estable (las defensas orbitales referencian por índice)
-    x: rndW(r * 2, WORLD.w - r * 2),
-    y: rndW(r * 2, WORLD.h - r * 2),
-    r,
-    sprite: makePlanet(r, rngWorld),
-    name: 'P-' + rndiW(100, 999),
-    res: PLANET_RES[rndiW(0, 2)],   // v1.1: ⛏ mineral / ⛽ gas / ◈ créditos (determinista)
-    stock: 0,           // v1.7: suministro local acumulado (solo con dueño)
-    owner: null,        // color de facción o null
-    capture: 0,         // progreso 0..1
-    capturer: null,     // facción que está capturando
-    shield: 0,          // puntos de escudo (solo planetas con dueño)
-    shieldMax: 25,
-  });
+for (let si = 0; si < suns.length; si++) {
+  const sun = suns[si];
+  const n = rndiW(4, 6);
+  for (let k = 0; k < n; k++) {
+    const r = rndiW(24, 70);
+    const orbit = sun.r + 450 + k * 480;
+    const a = rndW(0, TAU);
+    sun.orbits.push(orbit);
+    planets.push({
+      idx: planets.length,   // v1.6: índice estable (las defensas orbitales referencian por índice)
+      sys: si,               // v2.0: sistema solar al que pertenece
+      x: clamp(sun.x + Math.cos(a) * orbit, r * 2, WORLD.w - r * 2),
+      y: clamp(sun.y + Math.sin(a) * orbit, r * 2, WORLD.h - r * 2),
+      r,
+      sprite: makePlanet(r, rngWorld),
+      name: 'S' + (si + 1) + ' · P-' + rndiW(100, 999),   // v2.0: el nombre lleva su sistema
+      res: PLANET_RES[rndiW(0, 2)],   // v1.1: ⛏ mineral / ⛽ gas / ◈ créditos (determinista)
+      stock: 0,           // v1.7: suministro local acumulado (solo con dueño)
+      owner: null,        // color de facción o null
+      capture: 0,         // progreso 0..1
+      capturer: null,     // facción que está capturando
+      shield: 0,          // puntos de escudo (solo planetas con dueño)
+      shieldMax: 25,
+    });
+  }
 }
 // v0.8: galaxia virgen — NO hay planetas pre-conquistados. Cada facción
 // empieza de cero (capital + 1 nave) en initFactions() y se expande con su IA.
+
+// v2.0: evasión solar de la IA — si la trayectoria (x,y,ang) entra en un sol
+// (margen de 200 u), gira tangente al sol con un sesgo hacia fuera
+function sunAvoid(x, y, ang) {
+  for (const s of suns) {
+    const rr = s.r + 200;
+    const dx = s.x - x, dy = s.y - y;
+    if (dx * dx + dy * dy > (rr + 320) * (rr + 320)) continue;   // demasiado lejos
+    const fx = Math.cos(ang), fy = Math.sin(ang);
+    const t = dx * fx + dy * fy;                  // avance hasta el punto más cercano al sol
+    if (t < 0) continue;                          // el sol está detrás
+    const px = x + fx * t, py = y + fy * t;
+    if (dist2(px, py, s.x, s.y) >= rr * rr) continue;   // pasa de largo
+    const awayA = Math.atan2(y - s.y, x - s.x);
+    const tanA = awayA + (dx * fy - dy * fx < 0 ? Math.PI / 2 : -Math.PI / 2);
+    const vx = Math.cos(tanA) * 0.7 + Math.cos(awayA) * 0.3;
+    const vy = Math.sin(tanA) * 0.7 + Math.sin(awayA) * 0.3;
+    return Math.atan2(vy, vx);
+  }
+  return ang;
+}
 
 // estrellas (3 capas de parallax)
 const starLayers = [];
@@ -237,6 +336,47 @@ const bots = [];
 const facState = {};   // color -> { capital, credits, rel:{color->num}, warT:{}, aiT, buildT, building, personality }
 const FAC_SHIP_COST = 60, FAC_SHIP_TIME = 20, FAC_SHIP_ORE = 15;   // v1.7: la IA también paga ⛏ por nave
 const playerAggro = {};   // color -> s restantes de "provocada por el jugador" (wingmen pueden responder)
+
+/* =========================================================
+   v2.0 — GRID ESPACIAL Y CACHES POR FRAME
+   Con flotas de 300+ naves los scans O(n²) se comen el frame.
+   Rejilla uniforme de 250 u sobre `bots` (solo vivos), reconstruida
+   UNA vez por frame al inicio del bucle de bots; la usan el targeting
+   de wingmen/piratas/imperiales, las colisiones de proyectiles y las
+   capturas. El comportamiento NO cambia: mismos checks de guerra,
+   provocación y alcance — solo cambia cómo se encuentran candidatos.
+   ========================================================= */
+const GRID_CELL = 250;
+const GRID_W = Math.ceil(WORLD.w / GRID_CELL), GRID_H = Math.ceil(WORLD.h / GRID_CELL);
+const gridCells = [];
+for (let i = 0; i < GRID_W * GRID_H; i++) gridCells.push([]);
+function gridRebuild() {
+  for (const c of gridCells) c.length = 0;
+  for (const b of bots) {
+    if (!b.alive) continue;
+    const cx = clamp(Math.floor(b.x / GRID_CELL), 0, GRID_W - 1);
+    const cy = clamp(Math.floor(b.y / GRID_CELL), 0, GRID_H - 1);
+    gridCells[cy * GRID_W + cx].push(b);
+  }
+}
+// Recorre los bots vivos de las celdas que tocan el círculo (x,y,r).
+// cb(b) → true detiene la búsqueda (colisiones); los «más cercanos»
+// miran todos los candidatos y devuelven siempre false.
+function gridEach(x, y, r, cb) {
+  const x0 = clamp(Math.floor((x - r) / GRID_CELL), 0, GRID_W - 1);
+  const x1 = clamp(Math.floor((x + r) / GRID_CELL), 0, GRID_W - 1);
+  const y0 = clamp(Math.floor((y - r) / GRID_CELL), 0, GRID_H - 1);
+  const y1 = clamp(Math.floor((y + r) / GRID_CELL), 0, GRID_H - 1);
+  for (let cy = y0; cy <= y1; cy++) for (let cx = x0; cx <= x1; cx++) {
+    const cell = gridCells[cy * GRID_W + cx];
+    for (let i = 0; i < cell.length; i++) if (cb(cell[i])) return;
+  }
+}
+// caches por frame (se recalculan al inicio del bucle de bots en update):
+// seguidores del jugador, naves construidas vivas y naves vivas por facción
+const frameFollowers = [];
+const frameFacShips = {};
+let frameFleetCount = 0;
 
 /* v1.3: personalidades de facción — cada imperio juega distinto */
 const PERSONALITIES = {
@@ -284,27 +424,33 @@ function spawnFactionShip(color) {
   return b;
 }
 // v0.8: cada facción empieza DE CERO — capital propia lejos de las demás y 1 nave
+// v2.0: capitales a ≥6000 u entre sí y, si es posible, cada una en un sistema distinto
 function initFactions() {
   bots.length = 0;
   for (const c of FACTION_COLORS) delete facState[c];
   for (const k in playerAggro) delete playerAggro[k];
+  const usedSys = new Set();   // sistemas que ya tienen capital
+  if (playerCapital) usedSys.add(playerCapital.sys);
   for (const c of FACTION_COLORS) {
     if (c === player.color) continue;
-    let cap = null, bestD = -1;
-    for (let i = 0; i < 60; i++) {
+    let cap = null, bestD = -1, capNewSys = false;
+    for (let i = 0; i < 120; i++) {
       const p = planets[rndi(0, planets.length - 1)];
       if (p.owner) continue;
       let dmin = Infinity;
       for (const q of planets) if (q.owner) dmin = Math.min(dmin, dist2(p.x, p.y, q.x, q.y));
-      if (dmin > bestD) { bestD = dmin; cap = p; }
-      if (bestD > 2600 * 2600) break;
+      if (dmin < 6000 * 6000 && i < 100) continue;   // los últimos reintentos relajan la distancia
+      const newSys = !usedSys.has(p.sys);
+      if ((newSys && !capNewSys) || (newSys === capNewSys && dmin > bestD)) { bestD = dmin; cap = p; capNewSys = newSys; }
+      if (capNewSys && bestD > 6000 * 6000) break;
     }
     if (!cap) cap = planets.find(p => !p.owner);
     if (!cap) continue;
+    usedSys.add(cap.sys);
     cap.owner = c; cap.capital = true; cap.shieldMax = 100; cap.shield = 100;
     cap.name = 'CAPITAL ' + facName(c);
     cap.res = 'mineral'; cap.stock = CAP_START_STOCK;   // v1.7: capital minera también para la IA
-    facState[c] = { capital: cap, credits: 20, rel: {}, warT: {}, aiT: rnd(2, 6), buildT: 0, building: false, personality: null };
+    facState[c] = { capital: cap, credits: 20, rel: {}, warT: {}, aiT: rnd(2, 6), buildT: 0, building: false, personality: null, hangarLvl: 0 };   // v2.0: hangarLvl — la IA amplía su flota como el jugador
     for (const o of FACTION_COLORS) if (o !== c) facState[c].rel[o] = 0;
     spawnFactionShip(c);
   }
@@ -430,7 +576,7 @@ function facShipThink(b, dt) {
     tx = b.waypoint.x; ty = b.waypoint.y;
   }
   if (tx != null) {
-    const wa = Math.atan2(ty - b.y, tx - b.x);
+    const wa = sunAvoid(b.x, b.y, Math.atan2(ty - b.y, tx - b.x));   // v2.0: evasión solar
     b.angle = angleLerp(b.angle, wa, 1 - Math.pow(0.05, dt));
     b.thrustLvl = dist2(b.x, b.y, tx, ty) > 30 * 30 ? 1 : 0;   // v1.5
     if (b.thrustLvl) {
@@ -450,28 +596,32 @@ function facShipThink(b, dt) {
       const d = dist2(b.x, b.y, player.x, player.y);
       if (d < td) { td = d; tgt = player; }
     }
-    if (hostP) for (const o of bots) {
-      if (!o.built || !o.alive) continue;
-      const d = dist2(b.x, b.y, o.x, o.y);
-      if (d < td) { td = d; tgt = o; }
-    }
-    // otras facciones: SOLO en guerra declarada o como represalia (neutralidad por defecto)
-    // v1.3: los piratas (grises) son enemigos de todos — se les dispara siempre
-    for (const o of bots) {
-      if (o === b || !o.alive || o.color === b.color) continue;
-      if (!o.imp && !o.pirate) continue;
+    // v2.0: candidatos por grid (alcance máx. de cualquier regla: 520 u) —
+    // mismos checks de guerra/represalia, solo cambia cómo se encuentran
+    gridEach(b.x, b.y, 520, o => {
+      if (o === b || !o.alive || o.color === b.color) return false;
+      if (o.built) {   // tus wingmen: solo si la facción está hostil contigo
+        if (!hostP) return false;
+        const d = dist2(b.x, b.y, o.x, o.y);
+        if (d < td) { td = d; tgt = o; }
+        return false;
+      }
+      // otras facciones: SOLO en guerra declarada o como represalia (neutralidad por defecto)
+      // v1.3: los piratas (grises) son enemigos de todos — se les dispara siempre
+      if (!o.imp && !o.pirate) return false;
       if (o.pirate) {
         const d = dist2(b.x, b.y, o.x, o.y);
         if (d < 400 * 400 && d < td) { td = d; tgt = o; }
-        continue;
+        return false;
       }
       const war = atWarFF(b.color, o.color);
       const retal = b.retalT > 0 && b.lastHitBy === o.color;
-      if (!war && !retal) continue;
+      if (!war && !retal) return false;
       const d = dist2(b.x, b.y, o.x, o.y);
       const r = war ? 480 : 340;
       if (d < r * r && d < td) { td = d; tgt = o; }
-    }
+      return false;
+    });
     if (tgt) {
       const a = Math.atan2(tgt.y - b.y, tgt.x - b.x) + rnd(-0.15, 0.15);
       shoot(b.x + Math.cos(a) * 8, b.y + Math.sin(a) * 8, a, b.color, b);
@@ -544,6 +694,14 @@ addEventListener('mousedown', e => {
   // v0.7: SHIFT+arrastre = seleccionar naves (nunca dispara);
   // con naves seleccionadas, clic izquierdo = orden de movimiento
   if (e.shiftKey) { selStart(e.clientX, e.clientY); return; }
+  if (pendingOrder) {   // v2.0: orden armada desde el panel de flota — el clic fija el objetivo
+    const w = clientToWorld(e.clientX, e.clientY);
+    const act = pendingOrder;
+    fpDisarm();
+    orderGroup(act, clamp(w.x, 20, WORLD.w - 20), clamp(w.y, 20, WORLD.h - 20), null);
+    selection.clear();
+    return;
+  }
   if (selection.size) { orderMoveTo(e.clientX, e.clientY); return; }
   mouse.down = true;
 });
@@ -552,7 +710,7 @@ addEventListener('mouseup',   () => { mouse.down = false; if (selectBox) selFini
 addEventListener('wheel', e => {
   if (!inGame) return;
   // v1.6.1: hacer scroll DENTRO de un menú/panel no debe cambiar el zoom del juego
-  if (e.target.closest && e.target.closest('.game-panel, #chat, #board')) return;
+  if (e.target.closest && e.target.closest('.game-panel, #chat, #board, #fleet-panel')) return;
   cam.zoomTarget = clamp(cam.zoomTarget * Math.pow(1.2, -e.deltaY / 100), ZMIN, ZMAX);
 }, { passive: true });
 
@@ -804,13 +962,33 @@ function update(dt) {
   }
 
   /* --- bots --- */
+  // v2.0: caches por frame — se calculan UNA vez y los reutilizan el tick de
+  // facciones, la IA de los bots y la UI (nada de filtros O(n) por nave)
+  frameFleetCount = 0;
+  for (const k in frameFacShips) delete frameFacShips[k];
+  frameFollowers.length = 0;
+  for (const b of bots) {
+    if (!b.alive) continue;
+    if (b.built) { frameFleetCount++; if (b.role === 'follow') frameFollowers.push(b); }
+    else if (b.imp) frameFacShips[b.color] = (frameFacShips[b.color] || 0) + 1;
+  }
   // v0.8: tick de facciones imperio — economía, construcción y diplomacia estratégica
   for (const c in facState) {
     const f = facState[c];
     const owned = planets.filter(p => p.owner === c);
     f.credits += owned.reduce((s, p) => s + (p.capital ? PLANET_INCOME * 3 : (p.res === 'creditos' ? PLANET_INCOME : PLANET_INCOME * 0.5)), 0) * dt * (persOf(c).incomeMul || 1);   // v1.3: los mercantiles ganan más
-    const ships = bots.filter(b => b.imp && b.alive && b.color === c).length;
-    const cap = 2 + owned.length;
+    const ships = frameFacShips[c] || 0;   // v2.0: cache del frame
+    // v2.0: simetría total — el tope de naves de la IA es su nivel de hangar
+    // (misma curva que el jugador: 5 + 5·nivel), ya no el número de planetas
+    const cap = 5 + 5 * (f.hangarLvl || 0);
+    // v2.0: cerca del tope y con la hucha llena, la IA amplía su hangar (misma curva)
+    const upgAI = 50 * (f.hangarLvl + 1);
+    if (f.hangarLvl < HANGAR_LVL_MAX && ships >= cap * 0.8 && f.credits >= 3 * upgAI) {
+      f.credits -= upgAI; f.hangarLvl++;
+      const nvAI = f.hangarLvl + 1;
+      if (nvAI === 10 || nvAI === 25 || nvAI === 50)   // solo hitos: no spamear el chat
+        chatSys('🏗️ ' + facName(c) + ' amplía su hangar a nv.' + nvAI + ': puede desplegar hasta ' + (5 + 5 * f.hangarLvl) + ' naves.');
+    }
     // v1.7: simetría de suministros — sin ⛏ en sus planetas mineros no hay nave nueva
     if (!f.building && f.credits >= FAC_SHIP_COST && ships < cap && f.capital && f.capital.owner === c &&
         takeStock(c, 'mineral', FAC_SHIP_ORE)) {
@@ -829,6 +1007,7 @@ function update(dt) {
       for (const b of bots) if (b.imp && b.color === c) b.task = null;   // reasignar tareas
     }
   }
+  gridRebuild();   // v2.0: la grid del frame, tras los spawns del tick de facciones
   for (const b of bots) {
     // v0.6/v0.8/v1.3: las naves construidas, imperiales y piratas se pierden de verdad
     if (!b.alive && (b.built || b.imp || b.pirate)) { b.gone = true; continue; }
@@ -857,10 +1036,12 @@ function update(dt) {
         damageShip(player, pr.dmg || 1, pr.owner); dead = true;
       }
       // colisión con bots (mismo color = misma facción = inmune)
-      if (!dead) for (const b of bots) {
-        if (b === pr.owner || !b.alive || b.color === pr.color) continue;
-        if (dist2(pr.x, pr.y, b.x, b.y) < 49) { damageShip(b, pr.dmg || 1, pr.owner); dead = true; break; }
-      }
+      // v2.0: candidatos por grid (radio de impacto 7 u)
+      if (!dead) gridEach(pr.x, pr.y, 7, b => {
+        if (b === pr.owner || !b.alive || b.color === pr.color) return false;
+        if (dist2(pr.x, pr.y, b.x, b.y) < 49) { damageShip(b, pr.dmg || 1, pr.owner); dead = true; return true; }
+        return false;
+      });
       // minería: los proyectiles dañan asteroides
       if (!dead) for (const a of asteroids) {
         if (!a.alive) continue;
@@ -923,14 +1104,15 @@ function update(dt) {
     // ¿quién está presente?
     let playerHere = player.alive && dist2(p.x, p.y, player.x, player.y) < range;
     let botsHere = 0, botColor = null, contested = false;
-    for (const b of bots) {
-      if (!b.alive) continue;
+    gridEach(p.x, p.y, p.r + CAPTURE_RANGE_EXTRA, b => {   // v2.0: presencia por grid
+      if (!b.alive) return false;
       if (dist2(p.x, p.y, b.x, b.y) < range) {
         botsHere++;
         if (botColor && botColor !== b.color) contested = true;
         botColor = b.color;
       }
-    }
+      return false;
+    });
     if (playerHere && botsHere && botColor !== player.color) contested = true;
 
     if ((playerHere || botsHere) && !contested) {
@@ -1005,6 +1187,24 @@ function update(dt) {
     const period = isMine ? 2 : 3, cost = isMine ? 2 : 0;   // la IA repara gratis (su coste es no luchar)
     if (b.repairT >= period && (!cost || player.credits >= cost)) {
       b.repairT = 0; b.hp += 1; if (cost) player.credits -= cost;
+    }
+  }
+
+  /* --- v2.0: daño solar — a menos de sun.r + 120 u el sol quema (3 HP/s) ---
+     Muerte por sol = muerte normal (pérdida real). Ni la invulnerabilidad de
+     reaparición ni el deflector protegen del terreno: el deflector aguanta
+     un tick y el sol sigue quemando. */
+  for (const s of suns) {
+    const rr = (s.r + 120) ** 2;
+    if (player.alive && player.invuln <= 0 && dist2(player.x, player.y, s.x, s.y) < rr) {
+      player.hp -= 3 * dt; player.flash = 0.15;
+      notify('☀️ ¡Tu nave se quema! Aléjate del sol.', 'danger', 'sun', 4);
+      if (player.hp <= 0) { player.hp = 1; damageShip(player, 999, null); }
+    }
+    for (const b of bots) {
+      if (!b.alive || dist2(b.x, b.y, s.x, s.y) >= rr) continue;
+      b.hp -= 3 * dt; b.flash = 0.15;
+      if (b.hp <= 0) { b.hp = 1; damageShip(b, 999, null); }
     }
   }
 
@@ -1088,6 +1288,25 @@ function draw() {
     for (let gx = Math.floor(vL / 1000) * 1000; gx <= vR; gx += 1000) { ctx.moveTo(gx, vT); ctx.lineTo(gx, vB); }
     for (let gy = Math.floor(vT / 1000) * 1000; gy <= vB; gy += 1000) { ctx.moveTo(vL, gy); ctx.lineTo(vR, gy); }
     ctx.stroke();
+  }
+
+  // v2.0: soles — antes que los planetas; son la referencia de cada sistema
+  // (landmarks: se ven siempre, la niebla no los oculta)
+  for (const s of suns) {
+    const glow = s.r * (1 + SUN_HALO);
+    if (s.x < vL - glow || s.x > vR + glow || s.y < vT - glow || s.y > vB + glow) continue;
+    if (strat) {
+      // mapa de estrategia: círculo amarillo + anillos de órbita tenues de su sistema
+      ctx.fillStyle = '#ffd166';
+      ctx.beginPath(); ctx.arc(s.x, s.y, s.r, 0, TAU); ctx.fill();
+      ctx.strokeStyle = 'rgba(255,209,102,0.10)'; ctx.lineWidth = 2 / z;
+      for (const orb of s.orbits) { ctx.beginPath(); ctx.arc(s.x, s.y, orb, 0, TAU); ctx.stroke(); }
+    } else {
+      // zoom cercano: sprite pixel-art (halo incluido) + glow exterior
+      ctx.drawImage(s.sprite, s.x - s.sprite.width / 2, s.y - s.sprite.height / 2);
+      ctx.strokeStyle = 'rgba(255,159,90,0.22)'; ctx.lineWidth = 8;
+      ctx.beginPath(); ctx.arc(s.x, s.y, s.r + 34, 0, TAU); ctx.stroke();
+    }
   }
 
   // planetas (v0.9: niebla — solo lo explorado; atenuado y con el último
@@ -1306,6 +1525,9 @@ function drawMinimap() {
     mctx.fillStyle = (fogVisible(p.x, p.y) ? p.owner : p.knownOwner) || '#44557a';
     mctx.fillRect(p.x * k, p.y * k, 2, 2);
   }
+  // v2.0: soles siempre visibles en el minimapa (referencia de navegación)
+  mctx.fillStyle = '#ffd166';
+  for (const s of suns) mctx.fillRect(s.x * k, s.y * k, 2, 2);
   mctx.fillStyle = '#8fa8d0';
   for (const b of bots) if (b.alive && (b.built || fogVisible(b.x, b.y))) mctx.fillRect(b.x * k, b.y * k, 1, 1);
   for (const r of net.remotes.values()) {
@@ -1509,6 +1731,7 @@ function startGame() {
 function newGameInit() {
   // v0.5: elegir planeta CAPITAL — uno neutral lejos de otros dueños
   // (v0.8: la galaxia nace virgen, todos los planetas son neutros)
+  // v2.0: separación entre capitales escalada a la galaxia de sistemas (≥6000 u)
   let cap = null, bestD = -1;
   for (let i = 0; i < 40; i++) {
     const p = planets[rndi(0, planets.length - 1)];
@@ -1516,7 +1739,7 @@ function newGameInit() {
     let dmin = Infinity;
     for (const q of planets) if (q.owner) dmin = Math.min(dmin, dist2(p.x, p.y, q.x, q.y));
     if (dmin > bestD) { bestD = dmin; cap = p; }
-    if (bestD > 1500 * 1500) break;
+    if (bestD > 6000 * 6000) break;
   }
   if (!cap) cap = planets.find(p => !p.owner) || planets[0];
   playerCapital = cap;
@@ -1595,8 +1818,14 @@ function makeAsteroid(r, rng) {
 const asteroids = [];
 {
   const ra = mulberry32(777001);
-  for (let i = 0; i < 22; i++) {              // 22 campos de asteroides (mundo 12000, v1.0)
-    const cx = ra() * WORLD.w, cy = ra() * WORLD.h;
+  for (let i = 0; i < 30; i++) {              // v2.0: 30 campos (mundo 24000, sistemas solares)
+    let cx = 0, cy = 0, tries = 0;
+    do {   // el centro del campo (±200 de dispersión) lejos de soles y planetas
+      cx = ra() * WORLD.w; cy = ra() * WORLD.h;
+      tries++;
+    } while (tries < 40 && (
+      suns.some(s => dist2(cx, cy, s.x, s.y) < (s.r + 1100) ** 2) ||
+      planets.some(p => dist2(cx, cy, p.x, p.y) < (p.r + 500) ** 2)));
     for (let j = 0; j < 7; j++) {
       const r = 4 + ra() * 6;
       asteroids.push({
@@ -1662,7 +1891,7 @@ const TECH_TREE = [
   { key: 'deflector',  name: 'Escudo deflector', req: 'blindaje', rival: 'casco',      cost: 400, desc: 'Bloquea 1 impacto cada 20 s' },
   { key: 'casco',      name: 'Casco reforzado',  req: 'blindaje', rival: 'deflector',  cost: 400, desc: '+8 HP' },
   { key: 'extractor',  name: 'Extractor',        req: 'deposito', rival: 'hangarplus', cost: 400, desc: 'Minería +1◈ y mineral +50 %' },
-  { key: 'hangarplus', name: 'Hangar ampliado',  req: 'deposito', rival: 'extractor',  cost: 400, desc: '+2 flota máx. y +4 hangar' },
+  { key: 'hangarplus', name: 'Hangar ampliado',  req: 'deposito', rival: 'extractor',  cost: 400, desc: '+10 flota máx. y +20 hangar' },
 ];
 function techState(t) {
   if (player.tech[t.key]) return 'done';
@@ -1707,7 +1936,7 @@ function readSave() {
   try {
     const d = JSON.parse(localStorage.getItem(SAVE_KEY) || 'null');
     // v0.8: los saves anteriores (240 pilotos, sin facciones imperio) no son compatibles
-    // v1.0: tampoco los de otro tamaño de mundo (8000 → 12000)
+    // v1.0: tampoco los de otro tamaño de mundo (8000 → 12000 → 24000 en v2.0)
     if (d && (!d.factions || d.world !== WORLD.w)) { localStorage.removeItem(SAVE_KEY); return null; }
     return d;
   } catch (e) { return null; }
@@ -1747,6 +1976,7 @@ function saveGame() {
           credits: Math.floor(facState[c].credits), rel: facState[c].rel, warT: facState[c].warT,
           buildT: facState[c].buildT, building: facState[c].building, dead: !!facState[c].dead,
           personality: facState[c].personality || null,   // v1.3
+          hangarLvl: facState[c].hangarLvl || 0,   // v2.0
         };
         return o;
       })(),
@@ -1792,7 +2022,7 @@ function applySave(d) {
   // v0.8: esqueleto de facciones imperio (antes de restaurar capitales)
   for (const c of FACTION_COLORS) {
     if (c === player.color) continue;
-    if (!facState[c]) facState[c] = { capital: null, credits: 10, rel: {}, warT: {}, aiT: rnd(2, 6), buildT: 0, building: false };
+    if (!facState[c]) facState[c] = { capital: null, credits: 10, rel: {}, warT: {}, aiT: rnd(2, 6), buildT: 0, building: false, hangarLvl: 0 };
     for (const o of FACTION_COLORS) if (o !== c && facState[c].rel[o] == null) facState[c].rel[o] = 0;
   }
   for (const sp of d.planets || []) {
@@ -1832,6 +2062,7 @@ function applySave(d) {
     facState[c].buildT = sv.buildT || 0; facState[c].building = !!sv.building;
     facState[c].dead = !!sv.dead;   // v1.2
     facState[c].personality = sv.personality || PERS_KEYS[rndi(0, PERS_KEYS.length - 1)];   // v1.3
+    facState[c].hangarLvl = sv.hangarLvl || 0;   // v2.0
     if (sv.rel) facState[c].rel = sv.rel;
     if (sv.warT) facState[c].warT = sv.warT;
   }
@@ -2347,12 +2578,13 @@ function drawJoystick() {
    al hangar. PILOTAR te cambia
    a esa nave. Si caen, se pierden de verdad (built/gone).
    ========================================================= */
-const HANGAR_MAX = 6;        // almacén base (hangar nv.1)
-const HANGAR_LVL_MAX = 5;    // ampliaciones comprables (nv.6 = máximo)
-const hangarUpgCost = () => 150 * (player.hangarLvl + 1);   // 150/300/450/600/750◈
-function hangarMax() { return HANGAR_MAX + 2 * player.hangarLvl + (player.tech.hangarplus ? 4 : 0); }   // v1.4/v1.6
+// v2.0: hangar masivo — 60 niveles, +5 flota y +5 almacén por nivel
+const HANGAR_MAX = 10;       // almacén base (hangar nv.1)
+const HANGAR_LVL_MAX = 59;   // ampliaciones comprables (nv.60 = máximo)
+const hangarUpgCost = () => 50 * (player.hangarLvl + 1);   // 50/100/150… 3000◈
+function hangarMax() { return HANGAR_MAX + 5 * player.hangarLvl + (player.tech.hangarplus ? 20 : 0); }   // v1.4/v1.6/v2.0
 // v1.6: la flota activa la limita el nivel de hangar (se compra con ◈), no los planetas
-function fleetMax() { return 3 + 2 * player.hangarLvl + (player.tech.hangarplus ? 2 : 0); }
+function fleetMax() { return 5 + 5 * player.hangarLvl + (player.tech.hangarplus ? 10 : 0); }
 function upgradeHangar() {
   if (player.hangarLvl >= HANGAR_LVL_MAX) return;
   const cost = hangarUpgCost();
@@ -2378,7 +2610,7 @@ function nearCapital() {
   return playerCapital && player.alive &&
     dist2(player.x, player.y, playerCapital.x, playerCapital.y) < (playerCapital.r + 300) ** 2;
 }
-function fleetCount() { return bots.filter(b => b.built).length; }
+function fleetCount() { return frameFleetCount; }   // v2.0: cache por frame (antes: filter O(n) por llamada)
 function queueShip(type, planetIdx) {
   const s = shipDef(type);
   // v1.7: el astillero es un planeta PROPIO cualquiera (por defecto, la capital)
@@ -2465,6 +2697,7 @@ function deployShip(hi, role) {
   if (!type) return;
   hangarShips.splice(hi, 1);
   const b = makeWingman(type, role);
+  frameFleetCount++;   // v2.0: mantener el cache exacto entre frames
   const roleMsg = { defend: 'defendiendo la capital', garrison: 'en guarnición sobre tu capital', follow: 'en formación contigo' };
   chatSys('🚀 ' + b.name + ' desplegado' + (nearCapital() ? '' : ' por radio (sale de la capital)') + ': ' + (roleMsg[role] || 'en formación contigo') +
     ' (' + fleetCount() + '/' + fleetMax() + ')');
@@ -2476,6 +2709,7 @@ function recallShip(uid) {
   const b = bots[i];
   if (hangarShips.length >= hangarMax()) { chatSys('🏗️ Hangar lleno: no cabe ' + b.name + '.'); return; }
   bots.splice(i, 1);
+  frameFleetCount--;   // v2.0: mantener el cache exacto entre frames
   selection.delete(b.uid);   // v0.7: si estaba seleccionada, deja de estarlo
   hangarShips.push(b.shipType);
   chatSys('🛬 ' + b.name + ' ha vuelto al hangar.');
@@ -2519,8 +2753,10 @@ function wingmanUpdate(b, dt) {
   };
   let tx, ty, fireAnchor = null, fireRange = 420;
   if (b.role === 'follow' && player.alive) {
-    const follows = bots.filter(o => o.built && o.role === 'follow' && o.alive);
-    const i = Math.max(0, follows.indexOf(b)), n = follows.length;
+    // v2.0: la lista de seguidores es un cache del frame (antes: un filter por wingman)
+    let fi = -1, fn = 0;
+    for (const o of frameFollowers) { if (!o.alive) continue; if (o === b) fi = fn; fn++; }
+    const i = Math.max(0, fi), n = fn;
     const a = player.angle + Math.PI + (i - (n - 1) / 2) * 0.6;
     tx = player.x + Math.cos(a) * 60;
     ty = player.y + Math.sin(a) * 60;
@@ -2556,7 +2792,7 @@ function wingmanUpdate(b, dt) {
     fireAnchor = playerCapital;
   } else return;
   const dd = Math.sqrt(dist2(b.x, b.y, tx, ty));
-  const wa = Math.atan2(ty - b.y, tx - b.x);
+  const wa = sunAvoid(b.x, b.y, Math.atan2(ty - b.y, tx - b.x));   // v2.0: evasión solar
   b.angle = angleLerp(b.angle, wa, 1 - Math.pow(0.05, dt));
   // v1.5: nivel de estela según lo lejos del objetivo (lejos = acelera a tope)
   b.thrustLvl = dd > 30 ? (dd > 300 ? 2 : 1) : 0;
@@ -2570,12 +2806,13 @@ function wingmanUpdate(b, dt) {
   b.shootCd -= dt;
   if (b.shootCd <= 0 && prepT <= 0 && fireAnchor) {
     let tgt = null, td = fireRange * fireRange;
-    for (const o of bots) {
-      if (o === b || !o.alive || o.color === player.color) continue;
-      if ((standings[o.color] || 0) > -30 && (playerAggro[o.color] || 0) <= 0 && !o.pirate) continue;   // v0.8 disciplina · v1.3 piratas siempre
+    gridEach(fireAnchor.x, fireAnchor.y, fireRange, o => {   // v2.0: candidatos por grid (mismo criterio)
+      if (o === b || !o.alive || o.color === player.color) return false;
+      if ((standings[o.color] || 0) > -30 && (playerAggro[o.color] || 0) <= 0 && !o.pirate) return false;   // v0.8 disciplina · v1.3 piratas siempre
       const d = dist2(o.x, o.y, fireAnchor.x, fireAnchor.y);
       if (d < td) { td = d; tgt = o; }
-    }
+      return false;
+    });
     if (tgt) {
       const ta = Math.atan2(tgt.y - b.y, tgt.x - b.x) + rnd(-0.12, 0.12);
       shoot(b.x + Math.cos(ta) * 8, b.y + Math.sin(ta) * 8, ta, b.color, b);
@@ -2726,7 +2963,7 @@ addEventListener('mousedown', e => {
     closeFleetMenu();
 });
 addEventListener('keydown', e => {
-  if (e.key === 'Escape') { selection.clear(); closeFleetMenu(); }
+  if (e.key === 'Escape') { selection.clear(); closeFleetMenu(); fpDisarm(); }   // v2.0: también desarma la orden del panel
 });
 // limpieza automática: naves destruidas o recogidas salen de la selección
 const _update7 = update;
@@ -2738,6 +2975,113 @@ update = function (dt) {
 };
 const _back7 = backToMenu;
 backToMenu = function () { selection.clear(); closeFleetMenu(); _back7(); };
+
+/* =========================================================
+   v2.0 — PANEL PERMANENTE DE FLOTA (izquierda, bajo el HUD)
+   Lista TODAS las naves desplegadas con su orden y HP; clic en una fila la
+   (de)selecciona (misma `selection` que el RTS, se sincronizan solos); los
+   botones dan órdenes a la selección — MOVER/ATACAR arman la orden y el
+   siguiente clic en el mapa fija el objetivo.
+   Regla v0.5.3b: innerHTML solo cuando cambia la composición; por tick
+   solo textContent/classList de nodos ya creados.
+   ========================================================= */
+const fleetPanelEl = $('fleet-panel');
+const fpListEl = $('fp-list');
+const fpCountEl = $('fp-count');
+const fpDefpSel = $('fp-defp-sel');
+let pendingOrder = null;   // null | 'move' | 'attack' — orden armada esperando clic en el mapa
+let fpSig = '';            // firma de composición (re-render solo si cambia)
+let fpRows = {};           // uid -> {row, hp, order}
+
+function fpDisarm() {
+  pendingOrder = null;
+  document.querySelectorAll('#fp-orders button').forEach(x => x.classList.remove('armed'));
+}
+function roleLabelFP(b) {
+  switch (b.role) {
+    case 'follow':   return '👥 te sigue';
+    case 'defend':   return '🛡️ def. capital';
+    case 'garrison': return '🏰 guarnición';
+    case 'hold':     return '✋ parada';
+    case 'move':     return '➡️ en ruta';
+    case 'attack':   return '⚔️ atacando';
+    case 'defendP':  return '🛡️ ' + (planets[b.oplanet] ? planets[b.oplanet].name : 'planeta');
+    default:         return b.role || '';
+  }
+}
+function fpRender() {
+  const ships = bots.filter(b => b.built && b.alive);
+  const own = planets.map((p, i) => [p, i]).filter(([p]) => p.owner === player.color);
+  const sig = ships.map(b => b.uid + ':' + b.role + ':' + (b.oplanet == null ? '' : b.oplanet)).join('|') +
+    '#' + own.map(([p, i]) => i).join(',');
+  fpCountEl.textContent = ships.length + '/' + fleetMax() + (selection.size ? ' · ' + selection.size + ' sel.' : '');
+  if (sig !== fpSig) {
+    fpSig = sig;
+    fpRows = {};
+    fpListEl.innerHTML = ships.length ? '' :
+      '<div id="fp-empty">Sin naves desplegadas: construye en el hangar (H) y despliega.</div>';
+    for (const b of ships) {
+      const row = document.createElement('div');
+      row.className = 'fp-row';
+      row.innerHTML = '<span class="fp-name">' + shipDef(b.shipType).name + ' <b>' + b.name + '</b></span>' +
+        '<span class="fp-order"></span><span class="fp-hp"></span>';
+      row.onclick = () => {
+        if (selection.has(b.uid)) selection.delete(b.uid);
+        else selection.add(b.uid);
+      };
+      fpListEl.appendChild(row);
+      fpRows[b.uid] = { row, hp: row.querySelector('.fp-hp'), order: row.querySelector('.fp-order') };
+    }
+    fpDefpSel.innerHTML = own.map(([p, i]) =>
+      '<option value="' + i + '">' + (p === playerCapital ? '★ ' : '') + p.name + '</option>').join('');
+  }
+  // por tick: solo textos y resaltado en nodos existentes
+  for (const b of ships) {
+    const r = fpRows[b.uid];
+    if (!r) continue;
+    r.hp.textContent = Math.ceil(b.hp) + '❤';
+    r.hp.classList.toggle('low', b.hp <= (b.maxHp || 10) * 0.35);
+    const ol = roleLabelFP(b);
+    if (r.order.textContent !== ol) r.order.textContent = ol;
+    r.row.classList.toggle('sel', selection.has(b.uid));
+  }
+}
+$('fp-all').onclick = () => {
+  for (const b of bots) if (b.built && b.alive) selection.add(b.uid);
+};
+document.querySelectorAll('#fp-orders button[data-fpo]').forEach(btn => btn.onclick = () => {
+  const act = btn.dataset.fpo;
+  if (!selectedShips().length) { notify('🛰️ Selecciona naves primero (clic en la lista o SHIFT+arrastre).', 'info', 'fp-sel', 3); return; }
+  if (act === 'move' || act === 'attack') {
+    fpDisarm();
+    pendingOrder = act;
+    btn.classList.add('armed');
+    notify((act === 'move' ? '➡️ MOVIMIENTO armado' : '⚔️ ATAQUE armado') +
+      ': haz CLIC en el mapa para fijar el objetivo (ESC cancela).', 'info', 'fp-arm', 2);
+    return;
+  }
+  fpDisarm();
+  if (act === 'defendP') {
+    if (fpDefpSel.value === '') { notify('🛡️ No tienes planetas que defender.', 'info', 'fp-sel', 3); return; }
+    orderGroup('defendP', null, null, +fpDefpSel.value);
+  }
+  if (act === 'follow')   orderGroup('follow', null, null, null);
+  if (act === 'garrison') orderGroup('garrison', null, null, null);
+  if (act === 'hold')     orderGroup('hold', null, null, null);
+  if (act === 'recall')   { for (const b of selectedShips()) recallShip(b.uid); }
+  selection.clear();   // v0.7.1: toda orden dada suelta la selección
+});
+// tick del panel: 4 veces por segundo basta (estado, HP, resaltado)
+const _updateFP = update;
+let fpTick = 0;
+update = function (dt) {
+  _updateFP(dt);
+  fleetPanelEl.classList.toggle('hidden', !inGame);
+  fpTick -= dt;
+  if (inGame && fpTick <= 0) { fpTick = 0.25; fpRender(); }
+};
+const _backFP = backToMenu;
+backToMenu = function () { fpDisarm(); _backFP(); };
 
 /* =========================================================
    v0.5.2 — TUTORIAL GUIADO
@@ -2979,25 +3323,28 @@ function pirateThink(b, dt) {
   b.flash = Math.max(0, b.flash - dt);
   b.shootCd -= dt;
   // objetivo: la nave más cercana, de quien sea (los piratas no conocen la paz)
-  let tgt = null, td = Infinity;
-  for (const o of bots) {
-    if (o === b || !o.alive || o.pirate) continue;
+  // v2.0: candidatos por grid — más allá del alcance de persecución (2500 u) da
+  // igual quién sea el más cercano: el pirata patrulla su zona igual que antes
+  let tgt = null, td = 2500 * 2500;
+  gridEach(b.x, b.y, 2500, o => {
+    if (o === b || !o.alive || o.pirate) return false;
     const d = dist2(b.x, b.y, o.x, o.y);
     if (d < td) { td = d; tgt = o; }
-  }
+    return false;
+  });
   if (player.alive) {
     const d = dist2(b.x, b.y, player.x, player.y);
     if (d < td) { td = d; tgt = player; }
   }
   let tx, ty;
-  if (tgt && td < 2500 * 2500) { tx = tgt.x; ty = tgt.y; }
+  if (tgt) { tx = tgt.x; ty = tgt.y; }
   else {
     if (!b.waypoint || dist2(b.x, b.y, b.waypoint.x, b.waypoint.y) < 900)
       b.waypoint = { x: clamp(b.home.x + rnd(-800, 800), 20, WORLD.w - 20),
                      y: clamp(b.home.y + rnd(-800, 800), 20, WORLD.h - 20) };
     tx = b.waypoint.x; ty = b.waypoint.y;
   }
-  const wa = Math.atan2(ty - b.y, tx - b.x);
+  const wa = sunAvoid(b.x, b.y, Math.atan2(ty - b.y, tx - b.x));   // v2.0: evasión solar
   b.angle = angleLerp(b.angle, wa, 1 - Math.pow(0.05, dt));
   b.thrustLvl = dist2(b.x, b.y, tx, ty) > 40 * 40 ? 1 : 0;   // v1.5
   if (b.thrustLvl) {
@@ -3013,7 +3360,11 @@ function pirateThink(b, dt) {
 function fireEvent(force) {
   const kind = force || ['piratas', 'veta', 'gusano'][rndi(0, 2)];
   if (kind === 'piratas') {
-    const x = rnd(1000, WORLD.w - 1000), y = rnd(1000, WORLD.h - 1000);
+    let x = 0, y = 0, tries = 0;   // v2.0: nunca dentro de un sol
+    do {
+      x = rnd(1000, WORLD.w - 1000); y = rnd(1000, WORLD.h - 1000);
+      tries++;
+    } while (tries < 20 && suns.some(s => dist2(x, y, s.x, s.y) < (s.r + 400) ** 2));
     const n = rndi(2, 3);
     for (let i = 0; i < n; i++) spawnPirate(x + rnd(-150, 150), y + rnd(-150, 150));
     chatSys('🏴‍☠️ ¡PIRATAS detectados en (' + Math.floor(x) + ',' + Math.floor(y) + ')! Atacan a todo el mundo.');
@@ -3025,11 +3376,12 @@ function fireEvent(force) {
     chatSys('🌟 VETA RICA en (' + Math.floor(a.x) + ',' + Math.floor(a.y) + '): los asteroides de la zona dan ◈×2 durante 60 s.');
   } else {
     let x1 = 0, y1 = 0, x2 = 0, y2 = 0, tries = 0;
+    const inSun = (x, y) => suns.some(s => dist2(x, y, s.x, s.y) < (s.r + 400) ** 2);   // v2.0
     do {
       x1 = rnd(800, WORLD.w - 800); y1 = rnd(800, WORLD.h - 800);
       x2 = rnd(800, WORLD.w - 800); y2 = rnd(800, WORLD.h - 800);
       tries++;
-    } while (dist2(x1, y1, x2, y2) < 4000 * 4000 && tries < 20);
+    } while ((dist2(x1, y1, x2, y2) < 4000 * 4000 || inSun(x1, y1) || inSun(x2, y2)) && tries < 20);
     wormholes.push({ x: x1, y: y1, tx: x2, ty: y2, t: 90 });
     chatSys('🕳️ AGUJERO DE GUSANO estable entre (' + Math.floor(x1) + ',' + Math.floor(y1) +
             ') y (' + Math.floor(x2) + ',' + Math.floor(y2) + ') durante 90 s.');

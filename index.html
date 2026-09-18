@@ -162,7 +162,7 @@
       <button class="panel-x" title="Cerrar">✕</button>
       <h3>🚀 HANGAR</h3>
       <p class="panel-sub">Pilotando: <span id="hangar-current"></span> · Créditos: <span id="hangar-credits">0</span> ◈<span id="hangar-where"></span></p>
-      <p class="panel-sub">Hangar nv. <b id="hangar-lvl">1</b> <button id="hangar-upg" title="+2 flota activa y +2 almacén por nivel">AMPLIAR</button></p>
+      <p class="panel-sub">Hangar nv. <b id="hangar-lvl">1</b> <button id="hangar-upg" title="+5 flota activa y +5 almacén por nivel">AMPLIAR</button></p>
       <!-- v1.7: cada nave cuesta ◈ + recurso; el astillero es un planeta propio -->
       <h4 class="panel-sub2">CONSTRUIR EN <select id="hangar-yard"></select><span id="hangar-qstat"></span></h4>
       <div id="hangar-build"></div>
@@ -187,6 +187,24 @@
 
     <!-- Menú contextual de órdenes de flota (v0.7, botón derecho) -->
     <div id="fleet-menu" class="hidden"></div>
+
+    <!-- Panel permanente de flota (v2.0): todas las naves desplegadas con su
+         orden actual; clic en una fila la selecciona y los botones dan órdenes
+         a la selección (MOVER/ATACAR piden un clic en el mapa) -->
+    <div id="fleet-panel" class="hidden">
+      <div id="fp-head">🛰️ FLOTA <span id="fp-count"></span><button id="fp-all" title="Seleccionar todas las naves">TODAS</button></div>
+      <div id="fp-list"></div>
+      <div id="fp-orders">
+        <button data-fpo="move"     title="➡️ Mover: luego haz clic en el mapa">➡️</button>
+        <button data-fpo="attack"   title="⚔️ Atacar zona: luego haz clic en el mapa">⚔️</button>
+        <button data-fpo="defendP"  title="🛡️ Defender el planeta elegido">🛡️</button>
+        <select id="fp-defp-sel" title="Planeta a defender"></select>
+        <button data-fpo="follow"   title="👥 Seguirme">👥</button>
+        <button data-fpo="garrison" title="🏰 Guarnición en la capital">🏰</button>
+        <button data-fpo="hold"     title="✋ Parar (mantener posición)">✋</button>
+        <button data-fpo="recall"   title="🛬 Recoger al hangar">🛬</button>
+      </div>
+    </div>
   </div>
 
   <script src="game.js"></script>

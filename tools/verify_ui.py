@@ -1,8 +1,10 @@
-# verify_ui.py — prueba E2E real de PixelFleet v0.6 (headless Chromium)
+# verify_ui.py — prueba E2E real de PixelFleet v2.0 (headless Chromium)
 # Uso: ../.venv/Scripts/python tools/verify_ui.py   (desde app/)
 # Cubre: menú/ajustes, arranque, tienda, diplomacia, contratos, hangar/flota,
-# chat, persistencia total (continuar), borrado de partida y v1.7 (suministros
-# por planeta: stocks, costes ◈+recurso, colas por astillero, migración de saves).
+# chat, persistencia total (continuar), borrado de partida, v1.7 (suministros
+# por planeta: stocks, costes ◈+recurso, colas por astillero, migración de
+# saves) y v2.0 (sistemas solares: 12 soles, órbitas, daño solar, evasión;
+# hangar masivo de 60 niveles; panel permanente de flota con órdenes armadas).
 # Nota: los clics son reales; solo se aceleran créditos/tiempos de
 # construcción vía evaluate para no hacer el test eterno.
 import sys
@@ -85,6 +87,65 @@ with sync_playwright() as pw:
     stock0 = page.evaluate("playerCapital.stock")
     page.wait_for_timeout(2000)
     check(page.evaluate("playerCapital.stock") > stock0, 'v1.7: el stock del planeta crece con el tiempo (+0,4/s)')
+
+    # ===== 1b. v2.0: galaxia de sistemas solares =====
+    print('— v2.0: sistemas solares —')
+    check(page.evaluate("WORLD.w") == 24000 and page.evaluate("WORLD.h") == 24000, 'v2.0: mundo 24000×24000')
+    check(page.evaluate("suns.length") == 12, 'v2.0: 12 soles')
+    seps = page.evaluate("""(() => {
+      let mn = Infinity, edge = Infinity;
+      for (let i = 0; i < suns.length; i++) {
+        edge = Math.min(edge, suns[i].x - suns[i].r, WORLD.w - suns[i].x - suns[i].r,
+                        suns[i].y - suns[i].r, WORLD.h - suns[i].y - suns[i].r);
+        for (let j = i + 1; j < suns.length; j++)
+          mn = Math.min(mn, Math.hypot(suns[i].x - suns[j].x, suns[i].y - suns[j].y));
+      }
+      return { mn, edge };
+    })()""")
+    check(seps['mn'] >= 4500, f"v2.0: separación entre soles ≥4500 u ({seps['mn']:.0f})")
+    check(seps['edge'] >= 3000, f"v2.0: soles a ≥3000 u de los bordes ({seps['edge']:.0f})")
+    orb = page.evaluate("""(() => {
+      let bad = 0, noname = 0;
+      for (const p of planets) {
+        if (p.sys == null || !suns[p.sys]) { bad++; continue; }
+        const s = suns[p.sys];
+        const d = Math.hypot(p.x - s.x, p.y - s.y);
+        if (d < s.r + 400 || d > s.r + 450 + 5 * 480 + 100) bad++;
+        if (!/^S\\d+ · P-\\d+$/.test(p.name) && !p.capital) noname++;
+      }
+      return { bad, noname };
+    })()""")
+    check(orb['bad'] == 0, 'v2.0: todos los planetas pertenecen a un sistema y están en su órbita')
+    check(orb['noname'] == 0, 'v2.0: los nombres llevan su sistema («S<n> · P-xxx»)')
+    caps = page.evaluate("""(() => {
+      const cs = planets.filter(p => p.capital);
+      let mn = Infinity;
+      for (let i = 0; i < cs.length; i++) for (let j = i + 1; j < cs.length; j++)
+        mn = Math.min(mn, Math.hypot(cs[i].x - cs[j].x, cs[i].y - cs[j].y));
+      return { mn, sys: new Set(cs.map(p => p.sys)).size };
+    })()""")
+    check(caps['sys'] == 6, 'v2.0: cada capital en un sistema distinto')
+    check(caps['mn'] >= 6000, f"v2.0: capitales a ≥6000 u entre sí ({caps['mn']:.0f})")
+    avoid = page.evaluate("""(() => {
+      const s = suns[0];
+      return { into: sunAvoid(s.x - s.r - 250, s.y, 0), away: sunAvoid(s.x + 5000, s.y, 0) };
+    })()""")
+    check(abs(avoid['into']) > 0.5, 'v2.0: sunAvoid gira al apuntar a un sol')
+    check(abs(avoid['away']) < 1e-9, 'v2.0: sunAvoid no toca trayectorias limpias')
+    hp0 = page.evaluate("player.maxHp")
+    page.evaluate("""(() => {
+      const s = suns[0];
+      player.x = s.x + s.r + 60; player.y = s.y; player.invuln = 0; player.hp = player.maxHp;
+    })()""")
+    page.wait_for_timeout(1200)
+    check(page.evaluate("player.hp") < hp0 - 2, 'v2.0: el sol quema al jugador (3 HP/s)')
+    check(page.evaluate("player.alive"), 'v2.0: la quemadura es lenta (sigue vivo)')
+    page.evaluate("player.x = suns[0].x + suns[0].r + 2000; player.hp = player.maxHp")
+    page.wait_for_timeout(800)
+    check(page.evaluate("player.hp") >= page.evaluate("player.maxHp") - 0.01,
+          'v2.0: fuera de la zona solar no hay daño')
+    # devolver al jugador junto a su capital para no contaminar los tests siguientes
+    page.evaluate("player.x = playerCapital.x + 150; player.y = playerCapital.y; player.vx = player.vy = 0; cam.x = player.x; cam.y = player.y;")
 
     # ===== 2. tienda =====
     print('— tienda: compra real con clic —')
@@ -229,10 +290,10 @@ with sync_playwright() as pw:
     check(page.evaluate("fleetCount()") == 0 and page.evaluate("hangarShips.length") == 1,
           'RECOGER devuelve la nave al hangar')
 
-    # ===== v1.6: hangar por niveles (la flota ya NO depende de planetas) =====
-    print('— v1.6: ampliar hangar con ◈ —')
-    check(page.evaluate("fleetMax()") == 3 and page.evaluate("hangarMax()") == 6,
-          'hangar nv.1: flota 3 · almacén 6 (sin conquistar nada)')
+    # ===== v1.6/v2.0: hangar por niveles (la flota ya NO depende de planetas) =====
+    print('— v2.0: ampliar hangar con ◈ (curva masiva +5/+5) —')
+    check(page.evaluate("fleetMax()") == 5 and page.evaluate("hangarMax()") == 10,
+          'hangar nv.1: flota 5 · almacén 10 (sin conquistar nada)')
     page.evaluate("player.credits = 0")
     page.wait_for_timeout(250)
     check(page.locator('#hangar-upg').is_disabled(), 'sin ◈ el botón AMPLIAR está desactivado')
@@ -242,12 +303,12 @@ with sync_playwright() as pw:
     page.click('#hangar-upg')
     page.wait_for_timeout(300)
     credits_now = page.evaluate("Math.floor(player.credits)")
-    check(page.evaluate("player.hangarLvl") == 1 and 350 <= credits_now <= 356,
-          f'ampliar cuesta 150◈ y sube a nv.2 (quedan {credits_now}◈, +ingresos del tiempo real)')
-    check(page.evaluate("fleetMax()") == 5 and page.evaluate("hangarMax()") == 8,
-          'nv.2: flota 5 · almacén 8')
+    check(page.evaluate("player.hangarLvl") == 1 and 450 <= credits_now <= 456,
+          f'ampliar cuesta 50◈ y sube a nv.2 (quedan {credits_now}◈, +ingresos del tiempo real)')
+    check(page.evaluate("fleetMax()") == 10 and page.evaluate("hangarMax()") == 15,
+          'nv.2: flota 10 · almacén 15')
     check('Hangar ampliado a nv.2' in page.locator('#chat-log').inner_text(), 'ampliación anunciada en el chat')
-    check('2/6' in page.locator('#hangar-lvl').inner_text(), 'panel muestra el nivel de hangar')
+    check('2/60' in page.locator('#hangar-lvl').inner_text(), 'panel muestra el nivel de hangar (60 niveles, v2.0)')
     # los planetas ya NO amplían la flota (ojo: un planeta propio DA VISIÓN — elegir
     # el neutral más lejano de toda capital enemiga para no contaminar la niebla)
     page.evaluate("""(() => {
@@ -261,7 +322,7 @@ with sync_playwright() as pw:
       window.__tmpP = best; best.owner = player.color;
     })()""")
     page.wait_for_timeout(250)
-    check(page.evaluate("fleetMax()") == 5, 'conquistar un planeta NO cambia el tope de flota (v1.6)')
+    check(page.evaluate("fleetMax()") == 10, 'conquistar un planeta NO cambia el tope de flota (v1.6)')
     page.evaluate("window.__tmpP.owner = null")
 
     # ===== v1.5.2: órdenes por radio + ESPACIO no activa botones =====
@@ -450,6 +511,68 @@ with sync_playwright() as pw:
     page.wait_for_timeout(400)
     page.mouse.up()
     check(page.evaluate("projectiles.length") > 0, 'sin selección el clic vuelve a disparar')
+
+    # ===== 5b3. v2.0: panel permanente de flota (izquierda) =====
+    print('— v2.0: panel de flota permanente —')
+    check(page.locator('#fleet-panel').is_visible(), 'panel de flota visible en partida')
+    check(page.locator('.fp-row').count() == 1, 'la nave desplegada aparece en la lista')
+    check('atacando' in page.locator('.fp-row .fp-order').inner_text(),
+          'la fila muestra la orden actual (atacando)')
+    page.click('#fp-orders button[data-fpo="follow"]')   # sin selección: no debe aplicar nada
+    page.wait_for_timeout(150)
+    check(page.evaluate("bots.find(b => b.built).role") == 'attack', 'orden sin selección no se aplica (aviso)')
+    page.click('.fp-row')
+    page.wait_for_timeout(400)   # el resaltado se aplica en el tick del panel (0,25 s)
+    check(page.evaluate("selection.size") == 1, 'clic en la fila selecciona la nave (misma selección RTS)')
+    check('sel' in (page.locator('.fp-row').get_attribute('class') or ''), 'la fila se resalta al seleccionar')
+    page.click('.fp-row')
+    page.wait_for_timeout(150)
+    check(page.evaluate("selection.size") == 0, 'clic de nuevo la deselecciona')
+    page.click('#fp-all')
+    page.wait_for_timeout(150)
+    check(page.evaluate("selection.size") == 1, 'TODAS selecciona toda la flota')
+    page.click('#fp-orders button[data-fpo="follow"]')
+    page.wait_for_timeout(150)
+    check(page.evaluate("bots.find(b => b.built).role") == 'follow', 'SEGUIRME desde el panel')
+    check(page.evaluate("selection.size") == 0, 'la orden del panel también suelta la selección (v0.7.1)')
+    # MOVER armado: el siguiente clic en el mapa fija el objetivo
+    page.click('.fp-row')
+    page.wait_for_timeout(100)
+    page.click('#fp-orders button[data-fpo="move"]')
+    page.wait_for_timeout(100)
+    check(page.evaluate("pendingOrder") == 'move', 'MOVER queda armado esperando clic en el mapa')
+    check('armed' in (page.locator('#fp-orders button[data-fpo="move"]').get_attribute('class') or ''),
+          'botón MOVER resaltado mientras está armado')
+    page.mouse.click(500, 300)
+    page.wait_for_timeout(150)
+    check(page.evaluate("bots.find(b => b.built).role") == 'move', 'clic en el mapa aplica la orden MOVER armada')
+    check(page.evaluate("pendingOrder") is None, 'la orden se desarma tras aplicarse')
+    check(page.evaluate("selection.size") == 0, 'y también suelta la selección')
+    # ATACAR armado y cancelado con ESC (no debe aplicarse)
+    page.click('.fp-row')
+    page.wait_for_timeout(100)
+    page.click('#fp-orders button[data-fpo="attack"]')
+    page.wait_for_timeout(100)
+    check(page.evaluate("pendingOrder") == 'attack', 'ATAQUE armado')
+    page.keyboard.press('Escape')
+    page.wait_for_timeout(100)
+    check(page.evaluate("pendingOrder") is None and page.evaluate("bots.find(b => b.built).role") == 'move',
+          'ESC cancela la orden armada sin aplicarla')
+    # RECOGER desde el panel
+    page.click('.fp-row')
+    page.wait_for_timeout(100)
+    page.click('#fp-orders button[data-fpo="recall"]')
+    page.wait_for_timeout(400)
+    check(page.evaluate("fleetCount()") == 0 and page.evaluate("hangarShips.length") == 2,
+          'RECOGER desde el panel devuelve la nave al hangar')
+    check(page.locator('#fp-empty').count() == 1, 'sin naves desplegadas el panel muestra el estado vacío')
+    # dejar la partida como la esperan los tests de persistencia (1 nave con orden attack + ox/oy)
+    page.evaluate("""(() => {
+      deployShip(0, 'follow');
+      const b = bots.find(x => x.built);
+      b.role = 'attack'; b.ox = player.x + 300; b.oy = player.y; b.oplanet = null;
+    })()""")
+    page.wait_for_timeout(300)
 
     # ===== 5b2. v1.7: colas por planeta — paralelas, límite 3 y cancelación =====
     print('— v1.7: colas de construcción por planeta —')
@@ -792,8 +915,8 @@ with sync_playwright() as pw:
     check(page.evaluate("player.ship") == saved['ship'], f"nave actual restaurada ({saved['ship']})")
     check(page.evaluate("player.upgrades.motor") == saved['motor'], 'mejoras restauradas')
     check(page.evaluate("player.hangarLvl") == saved['hangarLvl']
-          and page.evaluate("fleetMax()") == 3 + 2 * saved['hangarLvl'],
-          f"nivel de hangar restaurado (nv.{saved['hangarLvl'] + 1}, v1.6)")
+          and page.evaluate("fleetMax()") == 5 + 5 * saved['hangarLvl'],
+          f"nivel de hangar restaurado (nv.{saved['hangarLvl'] + 1}, v1.6/v2.0)")
     check(page.evaluate(f"standings['{fac}']") <= -30, 'guerra declarada sigue en pie tras recargar')
     check(page.evaluate("playerCapital !== null && playerCapital.capital === true"),
           'capital restaurada por índice')

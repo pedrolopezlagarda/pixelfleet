@@ -273,3 +273,34 @@ body {
 #fleet-menu #fm-planets { margin: 2px 0 4px 14px; border-left: 2px solid #44557a; padding-left: 6px; }
 #fleet-menu #fm-planets button { color: #8aff80; border-color: #2d4a2d; font-size: 10px; }
 #fleet-menu #fm-planets button:hover { border-color: #8aff80; }
+
+/* ===== v2.0 — panel permanente de flota (izquierda, bajo el HUD) ===== */
+#fleet-panel {
+  position: fixed; left: 14px; top: 108px; z-index: 5; width: 216px;
+  background: rgba(11,16,48,.88); border: 3px solid #44557a;
+  box-shadow: 0 4px 0 #0a1628; padding: 6px;
+  max-height: calc(50vh - 140px); display: flex; flex-direction: column;
+}
+#fp-head { font-size: 12px; color: #7ef9ff; letter-spacing: 1px; display: flex;
+  align-items: center; gap: 6px; }
+#fp-count { color: #8fa8d0; }
+#fp-all { margin-left: auto; font-family: inherit; font-size: 9px; padding: 2px 6px;
+  cursor: pointer; background: #101a33; color: #ffd166; border: 2px solid #44557a; }
+#fp-all:hover { border-color: #ffd166; }
+#fp-list { margin-top: 5px; overflow-y: auto; flex: 1; min-height: 0; }
+.fp-row { display: flex; align-items: center; gap: 5px; padding: 3px 4px; cursor: pointer;
+  font-size: 10px; border: 2px solid transparent; }
+.fp-row:hover { background: #16224a; }
+.fp-row.sel { border-color: #fff; background: rgba(38,48,88,.9); }
+.fp-row .fp-name { color: #e8f0ff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fp-row .fp-order { color: #8fa8d0; margin-left: auto; text-align: right; }
+.fp-row .fp-hp { color: #8aff80; }
+.fp-row .fp-hp.low { color: #ff6b6b; }
+#fp-empty { font-size: 10px; color: #8fa8d0; padding: 6px 2px; }
+#fp-orders { display: flex; gap: 3px; margin-top: 5px; align-items: center; }
+#fp-orders button { flex: 0 0 auto; width: 23px; height: 23px; font-size: 12px; cursor: pointer;
+  background: #101a33; border: 2px solid #44557a; padding: 0; }
+#fp-orders button:hover { border-color: #7ef9ff; }
+#fp-orders button.armed { border-color: #ffd166; background: rgba(38,30,8,.95); }
+#fp-defp-sel { flex: 1; min-width: 0; font-family: inherit; font-size: 9px; height: 23px;
+  background: #101a33; color: #8aff80; border: 2px solid #2d4a2d; }

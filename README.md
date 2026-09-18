@@ -1,15 +1,16 @@
-# 🚀 PIXEL FLEET — v1.7
+# 🚀 PIXEL FLEET — v2.0
 
 Juego de **estrategia espacial** vista cenital, pixel-art, multijugador.
 **Todas las facciones empiezan de cero**: su planeta capital y **una sola nave**,
 igual que tú. La IA juega de verdad: conquista planetas, mina asteroides y
-construye naves; negocia guerras y alianzas por pura **estrategia**. El espacio
-es **grande de verdad** (12000×12000) y la **niebla de guerra** lo oculta todo:
-explorar, expandirte y elegir tus guerras es el juego. Empiezas en tu **capital**
-(escudo de 100 pts) con un caza y **5 minutos de preparación protegida**.
-Construyes tu flota nave a nave y la controlas como en un **RTS**: selección por
-cuadro, órdenes de grupo con el botón derecho. Y **todo se guarda**: tu partida,
-la de las facciones y tu mapa explorado continúan donde los dejaste.
+construye naves; negocia guerras y alianzas por pura **estrategia**. La galaxia es
+**grande de verdad** (24000×24000) y está organizada en **12 sistemas solares**:
+cada sol tiene sus planetas en órbita, quema lo que se acerca y sirve de referencia
+de navegación en la **niebla de guerra**, que oculta todo lo demás. Tu flota puede
+llegar a **cientos de naves** (hangar de 60 niveles, también para la IA) y la
+controlas como en un **RTS**: selección por cuadro, menú de órdenes con el botón
+derecho y un **panel de flota permanente** a la izquierda. Y **todo se guarda**:
+tu partida, la de las facciones y tu mapa explorado continúan donde los dejaste.
 
 ---
 
@@ -36,6 +37,7 @@ muestra el atajo de teclado). No hace falta memorizar nada.
 | **SHIFT + arrastrar** | Seleccionar naves de tu flota (cuadro, estilo Age of Empires) |
 | **Clic** (con naves seleccionadas) | Mover el grupo a ese punto |
 | **Clic derecho** | Menú de órdenes para la selección (o la nave bajo el cursor) |
+| **Panel de flota** (izquierda) | Lista de todas tus naves: clic selecciona, botones de orden (v2.0) |
 | **ESPACIO** | Impulso (gasta combustible) |
 | **B** | Tienda de mejoras |
 | **F** | Panel de diplomacia |
@@ -94,11 +96,12 @@ imperio son siempre de otros colores). Desde el hangar (H), junto a tu capital:
 - Por cada nave decides: **SEGUIRME** (escolta en formación que dispara a tus
   agresores), **DEFENDER CAPITAL** (patrulla tu planeta), **RECOGER** (vuelve al
   hangar) o **PILOTAR** (la usas tú; tu nave anterior pasa al hangar).
-- **Hangar por niveles (v1.6)**: la flota activa y el almacén ya **no dependen de
-  los planetas conquistados**. El hangar se **amplía con créditos** (botón AMPLIAR
-  en el panel H: 150/300/450/600/750 ◈, 5 niveles): cada nivel da **+2 flota
-  activa y +2 almacén** (de flota 3/almacén 6 en nv.1 hasta flota 13/almacén 16
-  en nv.6). El límite real de tu armada es tu economía.
+- **Hangar por niveles (v1.6, ampliado en v2.0)**: la flota activa y el almacén ya
+  **no dependen de los planetas conquistados**. El hangar se **amplía con créditos**
+  (botón AMPLIAR en el panel H: 50◈ × nivel, **60 niveles**): cada nivel da **+5 flota
+  activa y +5 almacén** (de flota 5/almacén 10 en nv.1 hasta flota 300/almacén 310
+  en nv.60). El límite real de tu armada es tu economía — y la IA juega con la
+  misma regla (cada facción amplía su propio hangar con su hucha).
 - **Muerte real**: los wingmen caídos se pierden. Si TU nave es destruida, también la
   pierdes: reapareces en la capital con otra nave del hangar — o con un **caza de
   emergencia** si no te queda ninguna.
@@ -130,6 +133,31 @@ stock (`P-123 ● ⛏ 42`).
   (TAB) muestra los totales y el stock de cada planeta. Los saves antiguos se
   migran solos: el viejo mineral global se vuelca al stock de tu capital.
 
+### 🌞 Sistemas solares (v2.0)
+- El mundo crece a **24000×24000** y se organiza en **12 sistemas solares**: cada
+  sol tiene **4-6 planetas en órbita** (nombres «S3 · P-451» — la S es su sistema).
+  Las capitales nacen cada una en un sistema distinto, a ≥6000 u entre sí.
+- **El sol quema**: a menos de su limbo +120 u tu nave pierde 3 HP/s (muerte real).
+  La IA **esquiva los soles** al trazar sus rutas; tus wingmen también.
+- Los soles son **landmarks**: se ven siempre (la niebla no los oculta) y salen en
+  el minimapa — sirven para orientarte en una galaxia enorme. En el zoom de
+  estrategia se dibujan los **anillos de órbita** de cada sistema.
+- Todo sigue siendo **determinista** (misma galaxia en cada carga) y los soles no
+  ocupan save: se regeneran igual siempre.
+- **Rendimiento**: con flotas de cientos de naves, el targeting, las colisiones de
+  proyectiles y las capturas usan una **rejilla espacial** reconstruida una vez por
+  frame (mismas reglas, sin scans O(n²)).
+
+### 🛰️ Panel de flota permanente (v2.0)
+A la izquierda, bajo el HUD, siempre visible en partida: **todas tus naves
+desplegadas** con su orden actual y su HP. Clic en una fila = (de)seleccionar esa
+nave (es la misma selección del RTS: SHIFT+arrastre y panel se sincronizan).
+Botones de orden para la selección: **➡️ MOVER** y **⚔️ ATACAR** quedan «armados»
+y el siguiente clic en el mapa fija el objetivo (ESC cancela); **🛡️ DEFENDER** el
+planeta elegido en el selector, **👥 SEGUIRME**, **🏰 GUARNICIÓN**, **✋ PARAR** y
+**🛬 RECOGER** se aplican al instante. Botón **TODAS** para seleccionar la flota
+entera. Como siempre, dar una orden suelta la selección.
+
 ### 🎖️ Control RTS de flota (v0.7)
 Tus naves desplegadas se controlan como en un **Age of Empires**:
 
@@ -148,8 +176,8 @@ Tus naves desplegadas se controlan como en un **Age of Empires**:
   (v0.7.1) y vuelves a pilotar y disparar al instante.
 - Las órdenes **se guardan en la partida**: al continuar, tu flota sigue ejecutándolas.
 
-### 🧭 Ritmo y distancias (v1.0)
-- El mundo es **12000×12000** (antes 8000): cruzarlo son **minutos reales**.
+### 🧭 Ritmo y distancias (v1.0, v2.0)
+- El mundo es **24000×24000** (v2.0; antes 12000): cruzarlo son **minutos reales**.
   Todas las velocidades ~÷3: tu nave, las imperiales, los wingmen y los
   proyectiles. Viajar es una decisión, no un paseo.
 - **Combustible serio**: el impulso (ESPACIO) quema 40/s — úsalo en rachas
@@ -238,8 +266,8 @@ se desbloquea su rama de tecnología — y solo puedes elegir **una de las dos**
 - **Armas**: Bláster pesado (daño ×2, cadencia -25 %) *o* Enjambre (+60 % cadencia).
 - **Defensa**: Escudo deflector (bloquea 1 impacto cada 20 s) *o* Casco reforzado
   (+8 HP).
-- **Logística**: Extractor (minería +1◈ y ⛏ +50 %) *o* Hangar ampliado (+2 flota,
-  +4 hangar).
+- **Logística**: Extractor (minería +1◈ y ⛏ +50 %) *o* Hangar ampliado (+10 flota,
+  +20 hangar).
 
 Cuestan 400◈ y son permanentes (se guardan en la partida).
 
@@ -313,7 +341,7 @@ Posiciones a 10 Hz, disparos y chat retransmitidos **por sala**.
 | `style.css` | Estilo retro pixelado |
 | `game.js` | Motor completo + sistemas v0.3/v0.4/v0.5/v0.6 |
 | `server.js` | Servidor WebSocket multijugador con salas |
-| `tools/verify_ui.py` | Test E2E real (Playwright): 180 checks — menús, clics, tienda/tecnología, flota, hangar por niveles, notificaciones, RTS, facciones IA, niebla, economía, eventos, victoria, persistencia, zoom, suministros por planeta (v1.7) |
+| `tools/verify_ui.py` | Test E2E real (Playwright): 212 checks — menús, clics, tienda/tecnología, flota, hangar (60 niveles), notificaciones, RTS, panel de flota, facciones IA, niebla, economía, eventos, victoria, persistencia, zoom, suministros (v1.7), sistemas solares y daño/ evasión solar (v2.0) |
 | `README.md` | Este documento |
 
 ### Tests E2E
@@ -331,9 +359,11 @@ estaciones espaciales comerciales.
 
 ---
 
-*v1.7 · suministros por planeta (stock local ⛏/⛽, costes ◈+recurso, colas por
-astillero) · hangar ampliable por niveles · árbol de tecnología · personalidades
-y eventos · victoria real · niebla de guerra*
+*v2.0 · galaxia de 12 sistemas solares (24000², daño solar, evasión IA) · hangar
+masivo de 60 niveles (flota de cientos, también la IA) · panel de flota permanente
+con órdenes · rejilla espacial de rendimiento · suministros por planeta · niebla
+de guerra*
 
-> ⚠️ El save v1.0 (`pixelfleet_save_v2`) no es compatible con partidas de versiones
-> anteriores (el mundo cambia de tamaño): al entrar empezarás una partida nueva.
+> ⚠️ El save (`pixelfleet_save_v2`) no es compatible con partidas de mundos
+> anteriores (8000/12000): al entrar empezarás una partida nueva en la galaxia
+> de sistemas solares.

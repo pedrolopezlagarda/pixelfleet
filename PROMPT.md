@@ -198,6 +198,20 @@ El roadmap v0.5 quedó completo en v1.2 (A-F + G/H). Nuevas líneas:
       (extractor/hangar ampliado). Persistente en el save.
 - [x] **FIX v1.4: los contratos de minería no contaban** (`onAsteroidMined` nunca
       se llamaba). Además, la minería de los wingmen ahora también da ◈ al jugador.
+- [x] **v2.0 — Galaxia de sistemas solares + hangar masivo + panel de flota**:
+      mundo 24000² con **12 soles** (4-6 planetas en órbita cada uno, nombres
+      «S<n> · P-xxx»); **el sol quema** (3 HP/s a menos de r+120, muerte real) y
+      la IA **esquiva soles** (`sunAvoid`); soles como landmarks visibles siempre
+      (también en minimapa); empaquetado por rejilla 4×3 + relajación por
+      repulsión (separación ~5000 u). **Hangar de 60 niveles** (+5 flota/+5
+      almacén por nivel, 50◈×nivel — hasta ~300 naves) **también para la IA**
+      (simetría total: su tope ya no son planetas sino su hangarLvl). **Rejilla
+      espacial** (250 u) + caches por frame para que 300+ naves no maten el
+      rendimiento (targeting, colisiones, capturas). **Panel permanente de
+      flota** a la izquierda: lista todas las naves con su orden/HP, clic =
+      (de)seleccionar, botones de orden (➡️/⚔️ armados esperan clic en el mapa,
+      🛡️ con selector de planeta, 👥 🏰 ✋ 🛬 inmediatas, TODAS). Saves de
+      mundos 8000/12000 invalidados por el marcador `world`.
 - [ ] **Asedios con defensas orbitales** y **misiones-historia** (siguientes,
       pedido de Pedro).
 - [x] **v1.6 — Hangar por niveles**: la flota activa ya NO depende de los
