@@ -1790,6 +1790,7 @@ function newGameInit() {
   player.hp = player.maxHp; player.fuel = player.maxFuel;
   if (player.credits < 40) player.credits = 40;   // fondos iniciales
   tutStep = 0; tutT = 0; tutorialOn = true;       // tutorial solo en partida nueva
+  if (typeof resetStory === 'function') resetStory();   // v2.1: historia desde el capítulo 1
   chatSys('🚀 Bienvenido a la galaxia, ' + player.name + '. Tu capital te espera: tienes 5 minutos de preparación.');
 }
 
@@ -2004,6 +2005,7 @@ function saveGame() {
       buildQueue: buildQueue.map(q => ({ type: q.type, t: q.t, planet: q.planet })),   // v1.7: con su astillero
       standings,
       contracts: { offers: contracts.offers, active: contracts.active, seq: contracts.seq },
+      story: { step: story.step, prog: story.prog, done: story.done, data: story.data },   // v2.1
     }));
   } catch (e) {}
 }
@@ -2128,6 +2130,14 @@ function applySave(d) {
     contracts.active = d.contracts.active || [];
     contracts.seq = d.contracts.seq || 1;
   }
+  // v2.1: historia. Migración: saves sin `story` no se invalidan — si la
+  // preparación ya acabó, la historia arranca en el capítulo 1.
+  if (d.story) {
+    story.step = d.story.step ?? -1; story.prog = d.story.prog || 0;
+    story.done = !!d.story.done; story.data = d.story.data || {};
+    storyResume();   // los piratas/gusanos del capítulo son transitorios: se respawnean
+  } else if ((d.prepT || 0) > 0) resetStory();
+  else storyActivate(0);
   prepT = d.prepT || 0;
   // stats derivadas y posición (si murió justo al guardar, reaparece en capital)
   applyUpgrades();
@@ -2365,6 +2375,7 @@ const TOURNEY_GOAL = 10;
 
 /* ---------- paneles ---------- */
 const contractsEl = document.getElementById('contracts');
+const missionsEl = document.getElementById('missions');   // v2.1 (junto a los demás …El: regla TDZ v0.9)
 const hangarEl = document.getElementById('hangar');
 function renderContracts() {
   document.getElementById('contract-active').innerHTML = contracts.active.length
@@ -3247,17 +3258,18 @@ update = function (dt) { _update52(dt); tutorialUpdate(dt); };
    tooltip). Los atajos de teclado siguen funcionando.
    ========================================================= */
 function toggleGamePanel(which) {
-  const map = { shop: shopEl, diplo: diploEl, contracts: contractsEl, hangar: hangarEl, empire: empireEl };
+  const map = { shop: shopEl, diplo: diploEl, contracts: contractsEl, missions: missionsEl, hangar: hangarEl, empire: empireEl };
   for (const k in map) if (k !== which) map[k].classList.add('hidden');
   map[which].classList.toggle('hidden');
   if (which === 'shop') renderShop();
   else if (which === 'diplo') renderDiplo();
   else if (which === 'contracts') renderContracts();
+  else if (which === 'missions') renderMissions();
   else if (which === 'hangar') renderHangar();
   else if (which === 'empire') renderEmpire();
 }
 function closeAllPanels() {
-  for (const el of [shopEl, diploEl, contractsEl, hangarEl, empireEl]) el.classList.add('hidden');
+  for (const el of [shopEl, diploEl, contractsEl, missionsEl, hangarEl, empireEl]) el.classList.add('hidden');
 }
 // v1.6.1: botón ✕ para cerrar cada panel (además de su tecla y ESC)
 document.querySelectorAll('.panel-x').forEach(b => b.onclick = () => b.parentElement.classList.add('hidden'));
@@ -3267,7 +3279,7 @@ const tbChat = document.getElementById('tb-chat');
 if (tbChat) tbChat.onclick = () => { chatInput.style.display = 'block'; chatInput.focus(); };
 const tbMenu = document.getElementById('tb-menu');
 if (tbMenu) tbMenu.onclick = () => { if (inGame) backToMenu(); };
-const tbPairs = tbButtons.map(b => [b, { shop: shopEl, diplo: diploEl, contracts: contractsEl, hangar: hangarEl, empire: empireEl }[b.dataset.panel]]);
+const tbPairs = tbButtons.map(b => [b, { shop: shopEl, diplo: diploEl, contracts: contractsEl, missions: missionsEl, hangar: hangarEl, empire: empireEl }[b.dataset.panel]]);
 
 // resaltar el icono del panel que esté abierto (también si se abre con teclado)
 const _update53 = update;
@@ -3523,14 +3535,14 @@ function eventsUpdate(dt) {
         if (dist2(s.x, s.y, w.x, w.y) < 45 * 45) {
           s.x = clamp(w.tx + rnd(-60, 60), 20, WORLD.w - 20); s.y = clamp(w.ty + rnd(-60, 60), 20, WORLD.h - 20);
           s.whCd = 3;
-          if (s === player) chatSys('🕳️ ¡Salto por el agujero de gusano!');
+          if (s === player) { chatSys('🕳️ ¡Salto por el agujero de gusano!'); if (typeof storyHook === 'function') storyHook('wormhole'); }
           explode(s.x, s.y, '#c792ff');
           break;
         }
         if (dist2(s.x, s.y, w.tx, w.ty) < 45 * 45) {
           s.x = clamp(w.x + rnd(-60, 60), 20, WORLD.w - 20); s.y = clamp(w.y + rnd(-60, 60), 20, WORLD.h - 20);
           s.whCd = 3;
-          if (s === player) chatSys('🕳️ ¡Salto por el agujero de gusano!');
+          if (s === player) { chatSys('🕳️ ¡Salto por el agujero de gusano!'); if (typeof storyHook === 'function') storyHook('wormhole'); }
           explode(s.x, s.y, '#c792ff');
           break;
         }
@@ -3561,3 +3573,274 @@ function eventsDraw() {   // bajo la niebla: solo lo visible se dibuja
 }
 const _update13 = update;
 update = function (dt) { _update13(dt); eventsUpdate(dt); };
+
+
+/* =========================================================
+   v2.1 — MISIONES-HISTORIA: «LA SEÑAL DEL VACÍO»
+   Cadena lineal de 6 capítulos con narrativa que guía la
+   partida. El objetivo se marca en el mundo y el minimapa
+   (la señal se conoce: el marcador atraviesa la niebla).
+   Persistente en el save (migración sin invalidar); local,
+   no toca salas ni server.js. Panel con la tecla J.
+   ========================================================= */
+const STORY = [
+  { id: 'eco', title: 'Eco lejano', obj: { type: 'reach' }, reward: 100,
+    brief: 'Alcanza la sonda abandonada (marcador ◆)',
+    lines: [
+      '📡 [SEÑAL DESCONOCIDA] …recibiendo transmisión del borde de la galaxia…',
+      '📜 HISTORIA — LA SEÑAL DEL VACÍO · Capítulo 1: Eco lejano.',
+      '📜 Una sonda antiquísima emite desde el punto marcado ◆. Ve a ver qué es.',
+    ],
+    outro: '📜 La sonda repite un mensaje: «no estáis solos». Algo ha detectado tu escaneo…' },
+  { id: 'piratas', title: 'No estás solo', obj: { type: 'killPirates', n: 4 }, reward: 150,
+    brief: 'Destruye la oleada de piratas',
+    lines: [
+      '📜 Capítulo 2: No estás solo.',
+      '📜 La señal también la oyeron otros. Piratas saqueadores vienen a por la sonda… y a por ti.',
+    ],
+    outro: '📜 Entre los restos, un diario de a bordo habla de un «atajo» para cruzar la galaxia… pero hace falta combustible.' },
+  { id: 'gas', title: 'Combustible para el salto', obj: { type: 'stock', res: 'gas', n: 60 }, reward: 120,
+    brief: 'Acumula 60⛽ de stock entre tus planetas',
+    lines: [
+      '📜 Capítulo 3: Combustible para el salto.',
+      '📜 El diario describe un salto imposible sin reservas. Acumula 60⛽ de gas en tus planetas.',
+    ],
+    outro: '📜 Depósitos llenos. El «atajo» resulta ser un agujero de gusano inestable…' },
+  { id: 'atajo', title: 'El atajo', obj: { type: 'wormhole' }, reward: 150,
+    brief: 'Salta por un agujero de gusano (◆ marca el más cercano)',
+    lines: [
+      '📜 Capítulo 4: El atajo.',
+      '📜 Salta por un agujero de gusano. El diario marca uno cerca de ti (◆).',
+    ],
+    outro: '📜 Al otro lado la señal suena más clara, pero cruza espacio disputado.' },
+  { id: 'territorio', title: 'Territorio hostil', obj: { type: 'conquer', n: 2 }, reward: 200,
+    brief: 'Conquista 2 planetas para asegurar la ruta',
+    lines: [
+      '📜 Capítulo 5: Territorio hostil.',
+      '📜 La ruta de la señal cruza espacio disputado. Conquista 2 planetas para asegurarla.',
+    ],
+    outro: '📜 Ruta asegurada. La fuente de la señal está al alcance: el origen del Vacío.' },
+  { id: 'origen', title: 'El origen', obj: { type: 'reach', final: true }, reward: 500,
+    brief: 'Alcanza el origen de la señal (marcador ◆)',
+    lines: [
+      '📜 Capítulo 6: El origen.',
+      '📜 Viaja al punto marcado ◆, en el borde de la galaxia, y descubre qué emite la señal.',
+    ],
+    outro: '📜 El origen: una baliza de una civilización anterior. Su último regalo: el MAPA DEL VACÍO.' },
+];
+// step: índice del capítulo activo (-1 = aún no empieza, espera al fin de la preparación)
+const story = { step: -1, prog: 0, done: false, data: {} };
+const missionTrackerEl = document.getElementById('mission-tracker');
+
+function resetStory() { story.step = -1; story.prog = 0; story.done = false; story.data = {}; }
+function storyTarget(ch) { const o = ch.obj; return (o.type === 'reach' || o.type === 'wormhole') ? 1 : o.n; }
+
+function storyPickPoint(final) {
+  const from = playerCapital || player;
+  const minD = final ? 9000 : 4000, maxD = final ? 20000 : 8000;
+  let x = WORLD.w / 2, y = WORLD.h / 2, tries = 0;
+  do {
+    const a = rnd(0, TAU), d = rnd(minD, maxD);
+    x = clamp(from.x + Math.cos(a) * d, 400, WORLD.w - 400);
+    y = clamp(from.y + Math.sin(a) * d, 400, WORLD.h - 400);
+    tries++;
+  } while (tries < 30 && (suns.some(s => dist2(x, y, s.x, s.y) < (s.r + 500) ** 2) ||
+           dist2(x, y, from.x, from.y) < minD * minD));
+  return { x, y };
+}
+function storySpawnPirates(n) {
+  for (let k = 0; k < n; k++) {
+    let x = 0, y = 0, tries = 0;   // v2.0: nunca dentro de un sol
+    do {
+      const a = rnd(0, TAU), d = rnd(600, 900);
+      x = clamp(player.x + Math.cos(a) * d, 200, WORLD.w - 200);
+      y = clamp(player.y + Math.sin(a) * d, 200, WORLD.h - 200);
+      tries++;
+    } while (tries < 12 && suns.some(s => dist2(x, y, s.x, s.y) < (s.r + 400) ** 2));
+    spawnPirate(x, y);
+  }
+}
+function storySpawnWormhole() {
+  let x1 = 0, y1 = 0, x2 = 0, y2 = 0, tries = 0;
+  const inSun = (x, y) => suns.some(s => dist2(x, y, s.x, s.y) < (s.r + 400) ** 2);
+  do {
+    const a = rnd(0, TAU);
+    x1 = clamp(player.x + Math.cos(a) * rnd(500, 800), 800, WORLD.w - 800);
+    y1 = clamp(player.y + Math.sin(a) * rnd(500, 800), 800, WORLD.h - 800);
+    x2 = rnd(800, WORLD.w - 800); y2 = rnd(800, WORLD.h - 800);
+    tries++;
+  } while ((dist2(x1, y1, x2, y2) < 4000 * 4000 || inSun(x1, y1) || inSun(x2, y2)) && tries < 20);
+  wormholes.push({ x: x1, y: y1, tx: x2, ty: y2, t: 600 });   // dura 10 min: da tiempo a llegar
+  story.data.wh = true;
+}
+function storyActivate(i) {
+  story.step = i; story.prog = 0; story.data = {};
+  const ch = STORY[i];
+  if (!ch) return;
+  for (const l of ch.lines) chatSys(l);
+  notify('📜 Capítulo ' + (i + 1) + '/' + STORY.length + ': ' + ch.title, 'info', 'story', 1);
+  const o = ch.obj;
+  if (o.type === 'reach') story.data = storyPickPoint(!!o.final);
+  else if (o.type === 'killPirates') storySpawnPirates(o.n);
+  else if (o.type === 'wormhole' && !wormholes.length) storySpawnWormhole();
+}
+function storyComplete() {
+  const ch = STORY[story.step];
+  if (!ch || story.done) return;
+  player.credits += ch.reward;
+  notify('📜 Capítulo completado: ' + ch.title + ' (+' + ch.reward + '◈)', 'good');
+  chatSys('📜 ✅ ' + ch.title + ' completada (+' + ch.reward + '◈).');
+  if (ch.outro) chatSys(ch.outro);
+  if (story.step >= STORY.length - 1) {
+    story.done = true;
+    explored.fill(1);   // recompensa final: el Mapa del Vacío revela toda la galaxia
+    chatSys('🌌 LA SEÑAL DEL VACÍO — historia completada. El Mapa del Vacío revela toda la galaxia.');
+    notify('🌌 ¡Historia completada! Mapa del Vacío: galaxia revelada', 'good');
+  } else {
+    storyActivate(story.step + 1);
+  }
+  saveGame();
+}
+function storyCheckDone() {
+  const ch = STORY[story.step];
+  if (ch && story.prog >= storyTarget(ch)) storyComplete();
+}
+// hooks: los llaman el núcleo (bajas, conquistas) y los saltos de gusano
+function storyHook(ev, d) {
+  if (story.done || story.step < 0) return;
+  const ch = STORY[story.step];
+  if (!ch) return;
+  const o = ch.obj;
+  if (o.type === 'killPirates' && ev === 'kill' && d && d.pirate) story.prog++;
+  else if (o.type === 'conquer' && ev === 'conquer') story.prog++;
+  else if (o.type === 'wormhole' && ev === 'wormhole') story.prog = 1;
+  else return;
+  storyCheckDone();
+}
+// al cargar una partida a media historia: respawn de lo transitorio (piratas, gusano)
+function storyResume() {
+  if (story.done || story.step < 0) return;
+  const ch = STORY[story.step];
+  if (!ch) return;
+  if (ch.obj.type === 'killPirates') storySpawnPirates(Math.max(0, ch.obj.n - story.prog));
+  if (ch.obj.type === 'wormhole' && !wormholes.length) storySpawnWormhole();
+}
+function storyProgressText() {
+  const ch = STORY[story.step];
+  if (!ch) return '';
+  const o = ch.obj;
+  if (o.type === 'killPirates') return 'piratas destruidos: ' + Math.min(story.prog, o.n) + '/' + o.n;
+  if (o.type === 'stock') return RES_ICON[o.res] + ' acumulado: ' + Math.min(story.prog, o.n) + '/' + o.n;
+  if (o.type === 'conquer') return 'planetas conquistados: ' + Math.min(story.prog, o.n) + '/' + o.n;
+  if (o.type === 'wormhole') return 'salta por un agujero de gusano';
+  return 'viaja a (' + Math.floor(story.data.x || 0) + ',' + Math.floor(story.data.y || 0) + ')';
+}
+function storyMarkerPos() {   // [x, y] del marcador ◆ actual, o null
+  if (story.done || story.step < 0) return null;
+  const ch = STORY[story.step];
+  if (!ch) return null;
+  if (ch.obj.type === 'reach' && story.data.x != null) return [story.data.x, story.data.y];
+  if (ch.obj.type === 'wormhole' && wormholes.length) {
+    let mx = null, my = null, bd = Infinity;
+    for (const w of wormholes) {
+      for (const [x, y] of [[w.x, w.y], [w.tx, w.ty]]) {
+        const d = dist2(player.x, player.y, x, y);
+        if (d < bd) { bd = d; mx = x; my = y; }
+      }
+    }
+    return mx == null ? null : [mx, my];
+  }
+  return null;
+}
+function missionsUpdate(dt) {
+  if (story.done) {
+    if (missionTrackerEl) missionTrackerEl.classList.add('hidden');
+    return;
+  }
+  if (story.step < 0) {
+    if (prepT <= 0) storyActivate(0);   // la historia arranca al acabar la preparación
+    return;
+  }
+  const ch = STORY[story.step];
+  if (!ch) return;
+  const o = ch.obj;
+  if (o.type === 'reach') {
+    if (player.alive && story.data.x != null &&
+        dist2(player.x, player.y, story.data.x, story.data.y) < 150 * 150) story.prog = 1;
+  } else if (o.type === 'stock') {
+    story.prog = Math.min(o.n, Math.floor(stockOf(player.color, o.res)));
+  }
+  storyCheckDone();
+  // tracker en HUD (solo textContent: regla v0.5.3b) y progreso del panel si está abierto
+  if (missionTrackerEl) {
+    missionTrackerEl.classList.remove('hidden');
+    missionTrackerEl.textContent = '📜 ' + (story.step + 1) + '/' + STORY.length + ' ' +
+      ch.title + ' — ' + storyProgressText();
+  }
+  const mp = document.getElementById('mission-prog');
+  if (mp && missionsEl && !missionsEl.classList.contains('hidden')) mp.textContent = storyProgressText();
+}
+// el marcador se dibuja ENCIMA de la niebla: la señal se conoce (landmark como los soles)
+function missionsDraw() {
+  const pos = storyMarkerPos();
+  if (!pos) return;
+  const [mx, my] = pos;
+  const t = performance.now() / 1000;
+  const z = Math.max(cam.zoom, 0.35);   // tamaño mínimo en el zoom de estrategia
+  const pr = (26 + 7 * Math.sin(t * 3.5)) / z;
+  ctx.strokeStyle = '#ffe066'; ctx.lineWidth = 3 / z;
+  ctx.beginPath();
+  ctx.moveTo(mx, my - pr); ctx.lineTo(mx + pr, my); ctx.lineTo(mx, my + pr); ctx.lineTo(mx - pr, my);
+  ctx.closePath(); ctx.stroke();
+  ctx.strokeStyle = 'rgba(255,224,102,0.35)';
+  ctx.beginPath(); ctx.arc(mx, my, pr + 14 / z, 0, TAU); ctx.stroke();
+  if (cam.zoom >= 0.8) {
+    ctx.fillStyle = '#ffe066'; ctx.font = (12 / cam.zoom) + 'px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('📜 ' + STORY[story.step].title, mx, my - pr - 10 / cam.zoom);
+  }
+}
+const _mmM = drawMinimap;
+drawMinimap = function () {
+  _mmM();
+  const pos = storyMarkerPos();
+  if (!pos) return;
+  mctx.fillStyle = '#ffe066';
+  mctx.fillRect(pos[0] * (150 / WORLD.w) - 1.5, pos[1] * (150 / WORLD.h) - 1.5, 3, 3);
+};
+function renderMissions() {
+  const el = $('missions-body');
+  if (!el) return;
+  const rows = STORY.map((ch, i) => {
+    const st = story.done || i < story.step ? '✅' : (i === story.step ? '▶' : '🔒');
+    return '<div class="mchap' + (i === story.step && !story.done ? ' now' : '') + '">' + st + ' ' +
+      (i + 1) + '. ' + ch.title + ' <span class="mrew">' + ch.reward + '◈</span></div>';
+  }).join('');
+  let body;
+  if (story.done) {
+    body = '<div class="contract active"><div class="ctitle">🌌 Historia completada</div>' +
+      '<div class="cdesc">La baliza del Vacío te ha regalado el mapa completo de la galaxia.</div></div>';
+  } else if (story.step < 0) {
+    body = '<div class="contract"><div class="ctitle">📡 …</div>' +
+      '<div class="cdesc">La historia empezará cuando acabe la fase de preparación.</div></div>';
+  } else {
+    const ch = STORY[story.step];
+    body = '<div class="contract active"><div class="ctitle">▶ ' + ch.title + '</div>' +
+      '<div class="cdesc">' + ch.brief + '</div>' +
+      '<div class="cprog"><span id="mission-prog">' + storyProgressText() + '</span> · ' + ch.reward + '◈</div></div>';
+  }
+  el.innerHTML = body + '<h4 class="panel-sub2">LA SEÑAL DEL VACÍO</h4>' + rows;
+}
+// enganches al motor (patrón de wrappers)
+const _onPlayerKillM = onPlayerKill;
+onPlayerKill = function (victim) { _onPlayerKillM(victim); storyHook('kill', victim); };
+const _onPlanetCapturedM = onPlanetCaptured;
+onPlanetCaptured = function () { _onPlanetCapturedM(); storyHook('conquer'); };
+const _drawM = draw;
+draw = function () { _drawM(); missionsDraw(); };   // encima de la niebla
+const _updateM = update;
+update = function (dt) { _updateM(dt); missionsUpdate(dt); };
+addEventListener('keydown', e => {
+  if (document.activeElement === chatInput) return;
+  if (e.key.toLowerCase() === 'j') toggleGamePanel('missions');
+});

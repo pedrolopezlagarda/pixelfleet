@@ -21,7 +21,7 @@
       <div id="room-box">
         <input id="input-room" maxlength="8" placeholder="CÓDIGO DE SALA (opcional)">
       </div>
-      <p class="footer">v1.7 · suministros por planeta · colas de construcción por astillero</p>
+      <p class="footer">v2.1 · misiones-historia «La señal del Vacío»</p>
     </div>
 
     <div id="panel-help" class="panel hidden">
@@ -36,7 +36,7 @@
       <p><b>CLIC DERECHO</b> — menú de órdenes: mover/atacar aquí, defender un planeta tuyo, seguirme, guarnición, parar o recoger</p>
       <p><b>ESC</b> — soltar la selección</p>
       <p><b>ESPACIO</b> — impulso (gasta combustible)</p>
-      <p><b>B</b> — tienda &nbsp;·&nbsp; <b>F</b> — diplomacia &nbsp;·&nbsp; <b>C</b> — contratos &nbsp;·&nbsp; <b>H</b> — hangar</p>
+      <p><b>B</b> — tienda &nbsp;·&nbsp; <b>F</b> — diplomacia &nbsp;·&nbsp; <b>C</b> — contratos &nbsp;·&nbsp; <b>J</b> — misiones &nbsp;·&nbsp; <b>H</b> — hangar</p>
       <p><b>TAB</b> — panel de imperio (planetas, flota, estado de la galaxia) &nbsp;·&nbsp; <b>ENTER</b> — chat &nbsp;·&nbsp; <b>M</b> — menú</p>
       <h2>NIEBLA DE GUERRA</h2>
       <p>Solo ves lo que está cerca de tus naves y planetas; el resto queda oculto. Lo explorado se queda atenuado en el mapa con el último dueño conocido. La clasificación solo muestra lo que conoces de cada imperio.</p>
@@ -108,6 +108,9 @@
     <!-- Notificaciones en pantalla (v1.6.1): avisos de ataque, bajas, construcción… -->
     <div id="notify"></div>
 
+    <!-- Tracker de la misión-historia activa (v2.1) -->
+    <div id="mission-tracker" class="hidden"></div>
+
     <!-- Banner de fase de preparación (v0.5) -->
     <div id="prep-banner" class="hidden"></div>
 
@@ -121,6 +124,7 @@
       <button data-panel="shop"      title="🔧 Tienda de mejoras  [B]">🔧</button>
       <button data-panel="diplo"     title="🤝 Diplomacia  [F]">🤝</button>
       <button data-panel="contracts" title="📋 Contratos  [C]">📋</button>
+      <button data-panel="missions"  title="📜 Misiones-historia  [J]">📜</button>
       <button id="tb-chat"           title="💬 Chat  [ENTER]">💬</button>
       <button id="tb-menu"           title="🏠 Volver al menú  [M]">🏠</button>
     </div>
@@ -155,6 +159,14 @@
       <h4 class="panel-sub2">DISPONIBLES</h4>
       <div id="contract-offers"></div>
       <p class="panel-hint">Pulsa <b>C</b> para cerrar</p>
+    </div>
+
+    <!-- Misiones-historia (tecla J) — v2.1: cadena de capítulos «La señal del Vacío» -->
+    <div id="missions" class="game-panel hidden">
+      <button class="panel-x" title="Cerrar">✕</button>
+      <h3>📜 MISIONES</h3>
+      <div id="missions-body"></div>
+      <p class="panel-hint">Pulsa <b>J</b> para cerrar</p>
     </div>
 
     <!-- Hangar (tecla H) — v0.6: construir / flota activa / hangar · v1.6: nivel ampliable -->

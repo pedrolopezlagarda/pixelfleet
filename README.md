@@ -1,4 +1,4 @@
-# 🚀 PIXEL FLEET — v2.0
+# 🚀 PIXEL FLEET — v2.1
 
 Juego de **estrategia espacial** vista cenital, pixel-art, multijugador.
 **Todas las facciones empiezan de cero**: su planeta capital y **una sola nave**,
@@ -42,6 +42,7 @@ muestra el atajo de teclado). No hace falta memorizar nada.
 | **B** | Tienda de mejoras |
 | **F** | Panel de diplomacia |
 | **C** | Contratos |
+| **J** | Misiones-historia (cadena de capítulos) |
 | **H** | Hangar: construir, desplegar y organizar tu flota |
 | **TAB** | Panel de imperio: planetas, flota, guerras y alianzas de la galaxia |
 | **T** | Cerrar el tutorial guiado |
@@ -318,6 +319,16 @@ Motor +15% vel · Cadencia +25% fuego · Blindaje +2 HP · Depósito +25 combust
 a cualquier nave que pilotes. Al llegar a nv.3 se desbloquea la **tecnología de la
 rama** (ver arriba). La minería de tus **wingmen** también te da ◈ (v1.4).
 
+### 📜 Misiones-historia: «La señal del Vacío» (v2.1)
+Una **historia en 6 capítulos** guía tu partida (panel **J** o icono 📜, tracker en
+el HUD). Al acabar la preparación llega una señal del borde de la galaxia: sigue
+el marcador **◆** (visible siempre, también en el minimapa) hasta la sonda,
+repele a los piratas que la oyeron, acumula combustible, salta por un agujero de
+gusano, asegura la ruta conquistando y viaja al **origen de la señal**. Cada
+capítulo se narra por el chat y paga ◈ (100-500); el final regala el **Mapa del
+Vacío** (toda la galaxia revelada). La historia **se guarda** con la partida y
+los saves antiguos migran solos sin invalidarse.
+
 ### 📋 Contratos (C)
 Hasta **2 contratos activos**: Caza (destruye naves, de una facción o cualquiera), Minería
 (asteroides) y Conquista (planetas). Nuevas ofertas cada 45 s. Recompensas 16-200◈.
@@ -348,7 +359,7 @@ Posiciones a 10 Hz, disparos y chat retransmitidos **por sala**.
 | `style.css` | Estilo retro pixelado |
 | `game.js` | Motor completo + sistemas v0.3/v0.4/v0.5/v0.6 |
 | `server.js` | Servidor WebSocket multijugador con salas |
-| `tools/verify_ui.py` | Test E2E real (Playwright): 221 checks — menús, clics, tienda/tecnología, flota, hangar (60 niveles), notificaciones, RTS, panel de flota, facciones IA, niebla, economía, eventos, victoria, persistencia, zoom, suministros (v1.7), sistemas solares y daño/ evasión solar (v2.0) |
+| `tools/verify_ui.py` | Test E2E real (Playwright): 243 checks — menús, clics, tienda/tecnología, flota, hangar (60 niveles), notificaciones, RTS, panel de flota, facciones IA, niebla, economía, eventos, victoria, persistencia, zoom, suministros (v1.7), sistemas solares y daño/evasión solar (v2.0), misiones-historia (v2.1) |
 | `README.md` | Este documento |
 
 ### Tests E2E
@@ -360,16 +371,17 @@ PYTHONIOENCODING=utf-8 ../.venv/Scripts/python tools/verify_ui.py   # desde app/
 
 ## Próximas ideas
 
-Asedios con defensas orbitales · misiones encadenadas en historia · tutorial del
-control RTS (Fase G, pendiente a petición de Pedro) · jefes de facción ·
-estaciones espaciales comerciales.
+Asedios con defensas orbitales · tutorial del control RTS (Fase G, pendiente a
+petición de Pedro) · jefes de facción · estaciones espaciales comerciales · más
+arcos de historia.
 
 ---
 
-*v2.0 · galaxia de 12 sistemas solares (24000², daño solar, evasión IA) · hangar
-masivo de 60 niveles (flota de cientos, también la IA) · panel de flota permanente
-con órdenes · rejilla espacial de rendimiento · suministros por planeta · niebla
-de guerra*
+*v2.1 · misiones-historia «La señal del Vacío» (6 capítulos, marcador ◆, Mapa
+del Vacío) · galaxia de 12 sistemas solares (24000², daño solar, evasión IA) ·
+hangar masivo de 60 niveles (flota de cientos, también la IA) · panel de flota
+permanente con órdenes · rejilla espacial de rendimiento · suministros por
+planeta · niebla de guerra*
 
 > ⚠️ El save (`pixelfleet_save_v2`) no es compatible con partidas de mundos
 > anteriores (8000/12000): al entrar empezarás una partida nueva en la galaxia

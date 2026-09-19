@@ -216,8 +216,19 @@ El roadmap v0.5 quedó completo en v1.2 (A-F + G/H). Nuevas líneas:
       con la disciplina de los wingmen; WASD/clic/ESPACIO = control manual al
       instante; se guarda en el save). Saves de
       mundos 8000/12000 invalidados por el marcador `world`.
-- [ ] **Asedios con defensas orbitales** y **misiones-historia** (siguientes,
-      pedido de Pedro).
+- [x] **v2.1 — Misiones-historia «La señal del Vacío»**: cadena lineal de 6
+      capítulos con narrativa por chat (panel **J** / icono 📜, tracker en el
+      HUD). Capítulos: alcanzar la sonda ◆, repeler 4 piratas, acumular 60⛽,
+      saltar por un agujero de gusano (el capítulo garantiza uno), conquistar 2
+      planetas y llegar al origen de la señal. Marcador ◆ siempre visible
+      (encima de la niebla + minimapa), recompensas 100-500◈ y final con el
+      **Mapa del Vacío** (toda la galaxia revelada). Hooks: wrappers de
+      `onPlayerKill`/`onPlanetCaptured` + llamada guardada en los saltos de
+      gusano. Persistente en el save; migración sin invalidar (saves viejos
+      arrancan en el cap 1 si ya pasó la preparación).
+- [ ] **Asedios con defensas orbitales** (siguiente, pedido de Pedro). A futuro:
+      tutorial del control RTS, jefes de facción, estaciones comerciales,
+      convoys de suministros, más arcos de historia.
 - [x] **v1.6 — Hangar por niveles**: la flota activa ya NO depende de los
       planetas conquistados. El hangar tiene 5 ampliaciones comprables
       (150/300/450/600/750◈): cada nivel da **+2 flota activa y +2 almacén**

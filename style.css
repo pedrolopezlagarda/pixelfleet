@@ -309,3 +309,12 @@ body {
 .fp-row.fp-player { border-bottom: 2px solid #44557a; margin-bottom: 3px; padding-bottom: 5px; }
 .fp-row.fp-player .fp-name { color: #ffd166; }
 .fp-row .fp-order.auto { color: #ffd166; }
+
+/* ===== v2.1 — misiones-historia ===== */
+#mission-tracker { position: fixed; top: 86px; left: 14px; z-index: 6;
+  background: rgba(11,16,48,.85); border: 2px solid #ffd166; padding: 4px 10px;
+  font-size: 11px; color: #ffd166; letter-spacing: 1px; text-shadow: 1px 1px 0 #000;
+  pointer-events: none; }
+.mchap { font-size: 11px; color: #8fa8d0; padding: 3px 6px; border-left: 2px solid #1a2a4a; }
+.mchap.now { color: #ffd166; border-left-color: #ffd166; }
+.mchap .mrew { color: #7ef9ff; float: right; }

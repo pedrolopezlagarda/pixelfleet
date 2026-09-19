@@ -897,6 +897,75 @@ with sync_playwright() as pw:
     check(page.evaluate("victory === true"), 'estado de victoria activo (y la partida sigue)')
     page.screenshot(path=str(SHOTS / 'ui_victoria.png'))
 
+    # ===== 5f. v2.1: misiones-historia «La señal del Vacío» =====
+    print('— v2.1: misiones-historia —')
+    page.evaluate("player.invuln = 9999;")   # los piratas de la historia no deben matar al tester
+    # la historia arrancó sola al terminar la preparación (prepT=0 en 5c)
+    check(page.evaluate("story.step") == 0, 'la historia empieza en el capítulo 1 al acabar la preparación')
+    check(page.evaluate("story.data.x != null"), 'cap 1 (Eco lejano): objetivo «reach» con coordenadas')
+    check(page.locator('#mission-tracker').is_visible()
+          and 'Eco lejano' in page.locator('#mission-tracker').inner_text(),
+          'el tracker del HUD muestra el capítulo activo')
+    check('SEÑAL DESCONOCIDA' in page.locator('#chat-log').inner_text(), 'la historia se narra por el chat')
+    # panel de misiones: tecla J y botón de la toolbar
+    page.keyboard.press('j')
+    page.wait_for_timeout(300)
+    check(page.locator('#missions').is_visible()
+          and 'LA SEÑAL DEL VACÍO' in page.locator('#missions').inner_text(),
+          'tecla J abre el panel de misiones con la cadena de capítulos')
+    page.keyboard.press('j')
+    page.wait_for_timeout(300)
+    check(not page.locator('#missions').is_visible(), 'tecla J cierra el panel')
+    page.click('#toolbar button[data-panel="missions"]')
+    page.wait_for_timeout(300)
+    check(page.locator('#missions').is_visible()
+          and 'Eco lejano' in page.locator('#missions').inner_text(),
+          'botón 📜 de la toolbar abre el panel y muestra el capítulo activo')
+    page.keyboard.press('Escape')
+    page.wait_for_timeout(200)
+    # cap 1 → reach: teletransportar al objetivo
+    creds0 = page.evaluate("Math.floor(player.credits)")
+    page.evaluate("""(() => {
+      for (const b of bots) if (b.pirate) b.alive = false;   // limpiar piratas de eventos anteriores
+      player.x = story.data.x; player.y = story.data.y; player.vx = player.vy = 0;
+      cam.x = player.x; cam.y = player.y;
+    })()""")
+    page.wait_for_timeout(500)
+    check(page.evaluate("story.step") == 1, 'llegar al marcador completa el cap 1 y activa el cap 2')
+    check(page.evaluate("Math.floor(player.credits)") >= creds0 + 100, 'recompensa del cap 1 (+100◈)')
+    check(page.evaluate("bots.filter(b => b.pirate && b.alive).length") == 4,
+          'cap 2 (No estás solo): oleada de 4 piratas spawneada')
+    # cap 2 → killPirates
+    page.evaluate("for (let i = 0; i < 4; i++) storyHook('kill', { pirate: true })")
+    page.wait_for_timeout(300)
+    check(page.evaluate("story.step") == 2, 'destruir los 4 piratas completa el cap 2')
+    # cap 3 → stock de gas: dar al jugador un planeta de gas con 60⛽
+    page.evaluate("""(() => {
+      const g = planets.find(p => p.res === 'gas' && !p.owner) || planets.find(p => p.res === 'gas');
+      g.owner = player.color; g.stock = 60;
+    })()""")
+    page.wait_for_timeout(500)
+    check(page.evaluate("story.step") == 3, 'acumular 60⛽ completa el cap 3')
+    # cap 4 → wormhole: el capítulo garantiza un gusano si no hay ninguno
+    check(page.evaluate("wormholes.length") >= 1, 'cap 4 (El atajo): hay un agujero de gusano disponible')
+    check(page.evaluate("storyMarkerPos() !== null"), 'el marcador ◆ apunta al gusano más cercano')
+    page.evaluate("storyHook('wormhole')")
+    page.wait_for_timeout(300)
+    check(page.evaluate("story.step") == 4, 'saltar por el gusano completa el cap 4')
+    # cap 5 → conquistar 2 planetas
+    page.evaluate("storyHook('conquer'); storyHook('conquer')")
+    page.wait_for_timeout(300)
+    check(page.evaluate("story.step") == 5, 'conquistar 2 planetas completa el cap 5')
+    # cap 6 → el origen: reach final + recompensa Mapa del Vacío
+    page.evaluate("player.x = story.data.x; player.y = story.data.y; player.vx = player.vy = 0; cam.x = player.x; cam.y = player.y;")
+    page.wait_for_timeout(500)
+    check(page.evaluate("story.done") is True, 'llegar al origen completa la historia')
+    check(page.evaluate("explored.every(v => v === 1)"), 'recompensa final: el Mapa del Vacío revela toda la galaxia')
+    check('MAPA DEL VACÍO' in page.locator('#chat-log').inner_text().upper(), 'el final se narra por el chat')
+    check(not page.locator('#mission-tracker').is_visible(), 'con la historia terminada el tracker se oculta')
+    page.evaluate("for (const b of bots) if (b.pirate) b.alive = false; player.invuln = 0;")   # limpieza para las secciones siguientes
+    page.screenshot(path=str(SHOTS / 'ui_historia.png'))
+
     # ===== 6. chat =====
     print('— chat —')
     page.keyboard.press('Enter')
@@ -965,6 +1034,7 @@ with sync_playwright() as pw:
           'v1.7: la cola de construcción se restaura con su planeta astillero')
     check(page.evaluate("planets.filter(p => p.capital && p.owner).every(p => p.res === 'mineral')"),
           'v1.7: tras cargar, todas las capitales vuelven a ser mineras')
+    check(page.evaluate("story.done") is True, 'v2.1: la historia completada se conserva tras recargar')
     page.screenshot(path=str(SHOTS / 'ui_continuar.png'))
 
     # ===== 8b. v1.7: migración de saves viejos (sin stock ni astillero en la cola) =====
@@ -975,6 +1045,7 @@ with sync_playwright() as pw:
       d.player.mineral = 25;                          // el viejo stock global del jugador
       for (const sp of d.planets) delete sp.stock;    // save viejo: sin stock por planeta
       for (const q of d.buildQueue) delete q.planet;  // ni astillero en la cola
+      delete d.story;                                 // v2.1: save viejo sin historia
       localStorage.setItem('pixelfleet_save_v2', JSON.stringify(d));
     })()""")
     page.reload()
@@ -986,6 +1057,8 @@ with sync_playwright() as pw:
           'v1.7: el viejo player.mineral se vuelca a la capital (30⛏ base + 25)')
     check(page.evaluate("buildQueue.every(q => q.planet === planets.indexOf(playerCapital))"),
           'v1.7: entradas de cola viejas sin planeta se asignan a la capital')
+    check(page.evaluate("story.step") == 0 and page.evaluate("!story.done"),
+          'v2.1: el save viejo sin historia migra al capítulo 1 (sin invalidar)')
 
     # ===== 9. borrar partida =====
     print('— ajustes: BORRAR PARTIDA —')
