@@ -1,4 +1,4 @@
-# 🚀 PIXEL FLEET — v2.1.1
+# 🚀 PIXEL FLEET — v2.1.2
 
 Juego de **estrategia espacial** vista cenital, pixel-art, multijugador.
 **Todas las facciones empiezan de cero**: su planeta capital y **una sola nave**,
@@ -330,7 +330,8 @@ el marcador **◆** (visible siempre, también en el minimapa) hasta la sonda,
 repele a los piratas que la oyeron (la oleada cuenta la destruya quien la
 destruya —v2.1.1— y el ◆ marca al más cercano), acumula combustible, salta por
 un agujero de gusano, asegura la ruta conquistando y viaja al **origen de la
-señal**. Cada
+señal**. Los objetivos están **cerca de tu territorio** (la sonda en tu
+vecindario; solo el clímax final te hace viajar un poco más — v2.1.2). Cada
 capítulo se narra por el chat y paga ◈ (100-500); el final regala el **Mapa del
 Vacío** (toda la galaxia revelada). La historia **se guarda** con la partida y
 los saves antiguos migran solos sin invalidarse.
@@ -365,7 +366,7 @@ Posiciones a 10 Hz, disparos y chat retransmitidos **por sala**.
 | `style.css` | Estilo retro pixelado |
 | `game.js` | Motor completo + sistemas v0.3/v0.4/v0.5/v0.6 |
 | `server.js` | Servidor WebSocket multijugador con salas |
-| `tools/verify_ui.py` | Test E2E real (Playwright): 250 checks — menús, clics, tienda/tecnología, flota, hangar (60 niveles), notificaciones, RTS, panel de flota, facciones IA, niebla, economía, eventos, victoria, persistencia, zoom, suministros (v1.7), sistemas solares y daño/evasión solar (v2.0), misiones-historia (v2.1), fuego disciplinado de wingmen (v2.1.1) |
+| `tools/verify_ui.py` | Test E2E real (Playwright): 252 checks — menús, clics, tienda/tecnología, flota, hangar (60 niveles), notificaciones, RTS, panel de flota, facciones IA, niebla, economía, eventos, victoria, persistencia, zoom, suministros (v1.7), sistemas solares y daño/evasión solar (v2.0), misiones-historia (v2.1, objetivos cercanos v2.1.2), fuego disciplinado de wingmen (v2.1.1) |
 | `README.md` | Este documento |
 
 ### Tests E2E
@@ -383,7 +384,8 @@ arcos de historia.
 
 ---
 
-*v2.1.1 · la oleada de la historia cuenta caiga por quien caiga (+marcador ◆ al
+*v2.1.2 · objetivos de la historia CERCA de casa (sonda ≤2500 u, origen ≤7000 u)
+· la oleada de la historia cuenta caiga por quien caiga (+marcador ◆ al
 pirata más cercano) y las balas de tus wingmen ya no dañan a neutrales ·
 misiones-historia «La señal del Vacío» (6 capítulos, Mapa del Vacío) · galaxia
 de 12 sistemas solares (24000², daño solar, evasión IA) · hangar masivo de 60

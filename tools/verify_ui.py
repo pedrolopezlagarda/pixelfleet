@@ -688,9 +688,15 @@ with sync_playwright() as pw:
       b.task = { type: 'conquer', p };
       b.x = p.x + p.r + 5; b.y = p.y; b.waypoint = null;
     })()""")
-    page.wait_for_timeout(7000)
-    check(page.evaluate("window.__planet.owner") == page.evaluate("window.__conq.color"),
-          'la IA conquista un planeta neutral por presencia')
+    # sondeo con margen: la conquista tarda 6 s, pero la nave puede tardar en
+    # asentarse en el planeta (flaky a 7 s justos)
+    ok_cap = False
+    for _ in range(12):
+        page.wait_for_timeout(1000)
+        if page.evaluate("window.__planet.owner") == page.evaluate("window.__conq.color"):
+            ok_cap = True
+            break
+    check(ok_cap, 'la IA conquista un planeta neutral por presencia')
 
     # la IA mina asteroides para la hucha de su facción
     page.evaluate("""(() => {
@@ -905,6 +911,8 @@ with sync_playwright() as pw:
     # la historia arrancó sola al terminar la preparación (prepT=0 en 5c)
     check(page.evaluate("story.step") == 0, 'la historia empieza en el capítulo 1 al acabar la preparación')
     check(page.evaluate("story.data.x != null"), 'cap 1 (Eco lejano): objetivo «reach» con coordenadas')
+    check(page.evaluate("Math.hypot(story.data.x - playerCapital.x, story.data.y - playerCapital.y)") <= 2600,
+          'v2.1.2: la sonda está CERCA de tu capital (≤2500 u, nada de cruzar la galaxia)')
     check(page.locator('#mission-tracker').is_visible()
           and 'Eco lejano' in page.locator('#mission-tracker').inner_text(),
           'el tracker del HUD muestra el capítulo activo')
@@ -966,6 +974,8 @@ with sync_playwright() as pw:
     page.wait_for_timeout(300)
     check(page.evaluate("story.step") == 5, 'conquistar 2 planetas completa el cap 5')
     # cap 6 → el origen: reach final + recompensa Mapa del Vacío
+    check(page.evaluate("Math.hypot(story.data.x - playerCapital.x, story.data.y - playerCapital.y)") <= 7100,
+          'v2.1.2: el origen está más lejos (es el clímax) pero sin cruzar la galaxia (≤7000 u)')
     page.evaluate("player.x = story.data.x; player.y = story.data.y; player.vx = player.vy = 0; cam.x = player.x; cam.y = player.y;")
     page.wait_for_timeout(500)
     check(page.evaluate("story.done") is True, 'llegar al origen completa la historia')

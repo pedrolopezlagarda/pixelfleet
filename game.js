@@ -3646,8 +3646,11 @@ function resetStory() { story.step = -1; story.prog = 0; story.done = false; sto
 function storyTarget(ch) { const o = ch.obj; return (o.type === 'reach' || o.type === 'wormhole') ? 1 : o.n; }
 
 function storyPickPoint(final) {
+  // v2.1.2 (feedback de Pedro): objetivos CERCA de casa — nada de mandarte a la
+  // quinta ostia. La sonda en tu vecindario; el origen, algo más lejos (es el
+  // clímax) pero sin cruzar la galaxia.
   const from = playerCapital || player;
-  const minD = final ? 9000 : 4000, maxD = final ? 20000 : 8000;
+  const minD = final ? 4000 : 1200, maxD = final ? 7000 : 2500;
   let x = WORLD.w / 2, y = WORLD.h / 2, tries = 0;
   do {
     const a = rnd(0, TAU), d = rnd(minD, maxD);

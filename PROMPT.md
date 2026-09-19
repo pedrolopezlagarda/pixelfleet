@@ -232,6 +232,10 @@ El roadmap v0.5 quedó completo en v1.2 (A-F + G/H). Nuevas líneas:
       **atraviesan a las facciones neutras sin dañarlas** (naves y escudos) —
       pelear contra piratas junto a un neutral ya no lo vuelve hostil
       (`wingmanCanEngage`: solo guerra, provocación o piratas).
+- [x] **v2.1.2 — objetivos de historia cerca de casa** (feedback de Pedro: «no
+      puede mandarte a la quinta ostia»): la sonda del cap 1 a 1200-2500 u de tu
+      capital (antes 4000-8000) y el origen del cap 6 a 4000-7000 u (antes
+      9000-20000). Solo el clímax te hace viajar un poco más.
 - [ ] **Asedios con defensas orbitales** (siguiente, pedido de Pedro). A futuro:
       tutorial del control RTS, jefes de facción, estaciones comerciales,
       convoys de suministros, más arcos de historia.
