@@ -226,6 +226,12 @@ El roadmap v0.5 quedó completo en v1.2 (A-F + G/H). Nuevas líneas:
       `onPlayerKill`/`onPlanetCaptured` + llamada guardada en los saltos de
       gusano. Persistente en el save; migración sin invalidar (saves viejos
       arrancan en el cap 1 si ya pasó la preparación).
+- [x] **v2.1.1 — fixes de Pedro**: la oleada de piratas del cap 2 cuenta los
+      piratas destruidos por CUALQUIERA (si la IA mata a dos, la misión ya no se
+      atasca) y el ◆ marca al pirata más cercano; y las balas de tus wingmen
+      **atraviesan a las facciones neutras sin dañarlas** (naves y escudos) —
+      pelear contra piratas junto a un neutral ya no lo vuelve hostil
+      (`wingmanCanEngage`: solo guerra, provocación o piratas).
 - [ ] **Asedios con defensas orbitales** (siguiente, pedido de Pedro). A futuro:
       tutorial del control RTS, jefes de facción, estaciones comerciales,
       convoys de suministros, más arcos de historia.

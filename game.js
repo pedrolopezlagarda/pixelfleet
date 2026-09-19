@@ -790,6 +790,12 @@ const CAPTURE_TIME = 6;      // segundos para capturar (v0.5.2: conquista más p
 const KILL_REWARD = 25;
 const PLANET_INCOME = 1;       // créditos/s por planeta propio
 
+// v2.1.1: disciplina de fuego de tu flota — tus wingmen solo pueden DAÑAR a
+// facciones en guerra contigo o provocadas (por ti o porque te atacaron).
+// Las balas perdidas contra neutrales ya no cabrean a nadie (feedback de Pedro).
+function wingmanCanEngage(color) {
+  return (standings[color] || 0) <= -30 || (playerAggro[color] || 0) > 0;
+}
 function damageShip(ship, dmg, killer) {
   if (ship === player && player.invuln > 0) return;
   // v1.4: el escudo deflector bloquea un impacto cada 20 s
@@ -1054,6 +1060,9 @@ function update(dt) {
       // v2.0: candidatos por grid (radio de impacto 7 u)
       if (!dead) gridEach(pr.x, pr.y, 7, b => {
         if (b === pr.owner || !b.alive || b.color === pr.color) return false;
+        // v2.1.1: las balas de tus wingmen atraviesan a las facciones neutras
+        // sin dañarlas (solo dañan en guerra, provocación o a piratas)
+        if (pr.owner && pr.owner.built && !b.pirate && !wingmanCanEngage(b.color)) return false;
         if (dist2(pr.x, pr.y, b.x, b.y) < 49) { damageShip(b, pr.dmg || 1, pr.owner); dead = true; return true; }
         return false;
       });
@@ -1086,6 +1095,7 @@ function update(dt) {
       // v0.5.2: no dañan planetas de su propia facción
       if (!dead) for (const p of planets) {
         if (!p.owner || p.shield <= 0 || p.owner === pr.color) continue;
+        if (pr.owner && pr.owner.built && !wingmanCanEngage(p.owner)) continue;   // v2.1.1: idem escudos de neutrales
         if (dist2(pr.x, pr.y, p.x, p.y) < (p.r + 4) ** 2) {
           // v0.5: durante la preparación la capital es invulnerable
           if (prepT > 0 && p === playerCapital) {
@@ -2841,7 +2851,7 @@ function wingmanUpdate(b, dt) {
     let tgt = null, td = fireRange * fireRange;
     gridEach(fireAnchor.x, fireAnchor.y, fireRange, o => {   // v2.0: candidatos por grid (mismo criterio)
       if (o === b || !o.alive || o.color === player.color) return false;
-      if ((standings[o.color] || 0) > -30 && (playerAggro[o.color] || 0) <= 0 && !o.pirate) return false;   // v0.8 disciplina · v1.3 piratas siempre
+      if (!o.pirate && !wingmanCanEngage(o.color)) return false;   // v0.8 disciplina · v1.3 piratas siempre · v2.1.1 helper
       const d = dist2(o.x, o.y, fireAnchor.x, fireAnchor.y);
       if (d < td) { td = d; tgt = o; }
       return false;
@@ -3062,7 +3072,7 @@ function playerAutoUpdate(dt, accel) {
     let tgt = null, td = 420 * 420;
     gridEach(player.x, player.y, 420, o => {
       if (!o.alive || o.color === player.color) return false;
-      if ((standings[o.color] || 0) > -30 && (playerAggro[o.color] || 0) <= 0 && !o.pirate) return false;
+      if (!o.pirate && !wingmanCanEngage(o.color)) return false;   // v2.1.1: misma disciplina que los wingmen
       const d = dist2(o.x, o.y, player.x, player.y);
       if (d < td) { td = d; tgt = o; }
       return false;
@@ -3657,7 +3667,11 @@ function storySpawnPirates(n) {
       y = clamp(player.y + Math.sin(a) * d, 200, WORLD.h - 200);
       tries++;
     } while (tries < 12 && suns.some(s => dist2(x, y, s.x, s.y) < (s.r + 400) ** 2));
-    spawnPirate(x, y);
+    // v2.1.1: la oleada queda marcada como TUYA — el capítulo cuenta los
+    // piratas de la oleada que caen, los destruya quien los destruya (si la
+    // IA se carga a dos, no se atasca la misión: feedback de Pedro)
+    const b = spawnPirate(x, y);
+    b.storyWave = story.step;
   }
 }
 function storySpawnWormhole() {
@@ -3705,14 +3719,13 @@ function storyCheckDone() {
   const ch = STORY[story.step];
   if (ch && story.prog >= storyTarget(ch)) storyComplete();
 }
-// hooks: los llaman el núcleo (bajas, conquistas) y los saltos de gusano
+// hooks: los llaman el núcleo (conquistas) y los saltos de gusano
 function storyHook(ev, d) {
   if (story.done || story.step < 0) return;
   const ch = STORY[story.step];
   if (!ch) return;
   const o = ch.obj;
-  if (o.type === 'killPirates' && ev === 'kill' && d && d.pirate) story.prog++;
-  else if (o.type === 'conquer' && ev === 'conquer') story.prog++;
+  if (o.type === 'conquer' && ev === 'conquer') story.prog++;
   else if (o.type === 'wormhole' && ev === 'wormhole') story.prog = 1;
   else return;
   storyCheckDone();
@@ -3740,6 +3753,16 @@ function storyMarkerPos() {   // [x, y] del marcador ◆ actual, o null
   const ch = STORY[story.step];
   if (!ch) return null;
   if (ch.obj.type === 'reach' && story.data.x != null) return [story.data.x, story.data.y];
+  if (ch.obj.type === 'killPirates') {
+    // v2.1.1: el ◆ marca el pirata de la oleada más cercano (para encontrarlos)
+    let mx = null, my = null, bd = Infinity;
+    for (const b of bots) {
+      if (!b.pirate || !b.alive || b.storyWave !== story.step) continue;
+      const d = dist2(player.x, player.y, b.x, b.y);
+      if (d < bd) { bd = d; mx = b.x; my = b.y; }
+    }
+    return mx == null ? null : [mx, my];
+  }
   if (ch.obj.type === 'wormhole' && wormholes.length) {
     let mx = null, my = null, bd = Infinity;
     for (const w of wormholes) {
@@ -3769,6 +3792,11 @@ function missionsUpdate(dt) {
         dist2(player.x, player.y, story.data.x, story.data.y) < 150 * 150) story.prog = 1;
   } else if (o.type === 'stock') {
     story.prog = Math.min(o.n, Math.floor(stockOf(player.color, o.res)));
+  } else if (o.type === 'killPirates') {
+    // v2.1.1: cuenta la oleada destruida, la mate quien la mate (jugador, flota o IA)
+    let alive = 0;
+    for (const b of bots) if (b.pirate && b.alive && b.storyWave === story.step) alive++;
+    story.prog = o.n - alive;
   }
   storyCheckDone();
   // tracker en HUD (solo textContent: regla v0.5.3b) y progreso del panel si está abierto

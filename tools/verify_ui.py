@@ -589,9 +589,11 @@ with sync_playwright() as pw:
     check(page.evaluate("player.role") == 'move' and page.evaluate("player.auto"),
           'MOVER armado también vale para tu nave')
     d0 = page.evaluate("Math.hypot(player.ox - player.x, player.oy - player.y)")
-    page.wait_for_timeout(2000)
-    d1 = page.evaluate("Math.hypot(player.ox - player.x, player.oy - player.y)")
-    check(d1 < d0, f'el piloto automático vuela hacia el objetivo ({d0:.0f} → {d1:.0f})')
+    dm = d0   # el automático puede pasarse de largo al llegar: vale con acercarse en algún momento
+    for _ in range(8):
+        page.wait_for_timeout(500)
+        dm = min(dm, page.evaluate("Math.hypot(player.ox - player.x, player.oy - player.y)"))
+    check(dm < d0 - 10, f'el piloto automático vuela hacia el objetivo ({d0:.0f} → {dm:.0f})')
     page.keyboard.down('w')
     page.wait_for_timeout(250)
     page.keyboard.up('w')
@@ -935,10 +937,17 @@ with sync_playwright() as pw:
     check(page.evaluate("Math.floor(player.credits)") >= creds0 + 100, 'recompensa del cap 1 (+100◈)')
     check(page.evaluate("bots.filter(b => b.pirate && b.alive).length") == 4,
           'cap 2 (No estás solo): oleada de 4 piratas spawneada')
-    # cap 2 → killPirates
-    page.evaluate("for (let i = 0; i < 4; i++) storyHook('kill', { pirate: true })")
-    page.wait_for_timeout(300)
-    check(page.evaluate("story.step") == 2, 'destruir los 4 piratas completa el cap 2')
+    check(page.evaluate("bots.filter(b => b.pirate && b.alive && b.storyWave === story.step).length") == 4,
+          'la oleada queda marcada como de la historia (storyWave)')
+    check(page.evaluate("storyMarkerPos() !== null"), 'el marcador ◆ apunta al pirata de la oleada más cercano')
+    # cap 2 → killPirates: la oleada cuenta la destruya quien la destruya (v2.1.1:
+    # si la IA mata a dos, la misión no se atasca). Simulado como bajas ajenas.
+    page.evaluate("bots.filter(b => b.storyWave === story.step).slice(0, 2).forEach(b => b.alive = false)")
+    page.wait_for_timeout(400)
+    check(page.evaluate("story.prog") == 2, 'los piratas de la oleada cuentan caigan por quien caigan (v2.1.1)')
+    page.evaluate("bots.filter(b => b.storyWave === story.step).forEach(b => b.alive = false)")
+    page.wait_for_timeout(400)
+    check(page.evaluate("story.step") == 2, 'oleada destruida: cap 2 completado')
     # cap 3 → stock de gas: dar al jugador un planeta de gas con 60⛽
     page.evaluate("""(() => {
       const g = planets.find(p => p.res === 'gas' && !p.owner) || planets.find(p => p.res === 'gas');
@@ -965,6 +974,41 @@ with sync_playwright() as pw:
     check(not page.locator('#mission-tracker').is_visible(), 'con la historia terminada el tracker se oculta')
     page.evaluate("for (const b of bots) if (b.pirate) b.alive = false; player.invuln = 0;")   # limpieza para las secciones siguientes
     page.screenshot(path=str(SHOTS / 'ui_historia.png'))
+
+    # ===== 5g. v2.1.1: las balas de los wingmen NO dañan a facciones neutras =====
+    print('— v2.1.1: fuego disciplinado de wingmen —')
+    page.evaluate("""(() => {
+      const w = makeWingman('caza', 'hold');
+      w.x = clamp(player.x + 300, 60, WORLD.w - 60); w.y = player.y; w.vx = w.vy = 0;
+      w.shootCd = 9999;   // que no dispare solo durante el test
+      window.__w = w;
+      const c = FACTION_COLORS.find(c => c !== player.color && (standings[c] || 0) > -30);
+      standings[c] = 0;
+      for (const k in playerAggro) delete playerAggro[k];
+      window.__impColor = c;
+      const imp = spawnFactionShip(c);
+      imp.x = w.x + 100; imp.y = w.y; imp.vx = imp.vy = 0; imp.hp = 10;
+      imp.shootCd = 9999; imp.speed = 0;   // quieta durante el test
+      window.__imp = imp;
+      shoot(w.x, w.y, Math.atan2(imp.y - w.y, imp.x - w.x), w.color, w);   // bala del wingman directa al imperial neutral
+    })()""")
+    page.wait_for_timeout(900)
+    check(page.evaluate("window.__imp.hp") == 10, 'la bala de un wingman NO daña a una facción neutral')
+    check(page.evaluate("Object.keys(playerAggro).length") == 0, 'la bala perdida no provoca a la facción (playerAggro vacío)')
+    check(page.evaluate("standings[window.__impColor]") == 0, 'ni castigo diplomático por fuego amigo accidental')
+    page.evaluate("""(() => {
+      standings[window.__impColor] = -100;   // guerra declarada: ahora sí puede dañarla
+      const w = window.__w, imp = window.__imp;
+      imp.x = w.x + 100; imp.y = w.y; imp.hp = 10;   // recolocar en la línea de fuego
+      shoot(w.x, w.y, Math.atan2(imp.y - w.y, imp.x - w.x), w.color, w);
+    })()""")
+    page.wait_for_timeout(900)
+    check(page.evaluate("window.__imp.hp") < 10, 'en guerra declarada la bala del wingman SÍ daña')
+    page.evaluate("""(() => {
+      standings[window.__impColor] = 0;
+      for (const k in playerAggro) delete playerAggro[k];
+      window.__imp.alive = false; window.__w.alive = false;   // limpieza
+    })()""")
 
     # ===== 6. chat =====
     print('— chat —')

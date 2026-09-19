@@ -1,4 +1,4 @@
-# 🚀 PIXEL FLEET — v2.1
+# 🚀 PIXEL FLEET — v2.1.1
 
 Juego de **estrategia espacial** vista cenital, pixel-art, multijugador.
 **Todas las facciones empiezan de cero**: su planeta capital y **una sola nave**,
@@ -226,7 +226,11 @@ construcción), tus planetas con escudo y producción, tu flota con su rol y el
   la tengan al lado. Solo abren fuego si estáis en **GUERRA** con esa facción o
   si **tú empiezas** a dañarla (tus disparos y los de tu flota «provocan» a la
   facción ~45 s; dañar sus escudos también cuenta). Si os disparan primero,
-  pueden responder en defensa propia.
+  pueden responder en defensa propia. **(v2.1.1)** Además, sus **balas perdidas
+  ya no dañan a neutrales**: los proyectiles de tus wingmen atraviesan sin
+  efecto a naves y escudos de facciones con las que no estás en guerra ni
+  provocadas — pelear contra piratas junto a una facción neutral ya no la
+  cabrea por accidente.
 - **Clasificación por imperios**: planetas 🪐, naves 🛰 y créditos ◈ de cada
   facción, ordenados por expansión.
 
@@ -323,8 +327,10 @@ rama** (ver arriba). La minería de tus **wingmen** también te da ◈ (v1.4).
 Una **historia en 6 capítulos** guía tu partida (panel **J** o icono 📜, tracker en
 el HUD). Al acabar la preparación llega una señal del borde de la galaxia: sigue
 el marcador **◆** (visible siempre, también en el minimapa) hasta la sonda,
-repele a los piratas que la oyeron, acumula combustible, salta por un agujero de
-gusano, asegura la ruta conquistando y viaja al **origen de la señal**. Cada
+repele a los piratas que la oyeron (la oleada cuenta la destruya quien la
+destruya —v2.1.1— y el ◆ marca al más cercano), acumula combustible, salta por
+un agujero de gusano, asegura la ruta conquistando y viaja al **origen de la
+señal**. Cada
 capítulo se narra por el chat y paga ◈ (100-500); el final regala el **Mapa del
 Vacío** (toda la galaxia revelada). La historia **se guarda** con la partida y
 los saves antiguos migran solos sin invalidarse.
@@ -359,7 +365,7 @@ Posiciones a 10 Hz, disparos y chat retransmitidos **por sala**.
 | `style.css` | Estilo retro pixelado |
 | `game.js` | Motor completo + sistemas v0.3/v0.4/v0.5/v0.6 |
 | `server.js` | Servidor WebSocket multijugador con salas |
-| `tools/verify_ui.py` | Test E2E real (Playwright): 243 checks — menús, clics, tienda/tecnología, flota, hangar (60 niveles), notificaciones, RTS, panel de flota, facciones IA, niebla, economía, eventos, victoria, persistencia, zoom, suministros (v1.7), sistemas solares y daño/evasión solar (v2.0), misiones-historia (v2.1) |
+| `tools/verify_ui.py` | Test E2E real (Playwright): 250 checks — menús, clics, tienda/tecnología, flota, hangar (60 niveles), notificaciones, RTS, panel de flota, facciones IA, niebla, economía, eventos, victoria, persistencia, zoom, suministros (v1.7), sistemas solares y daño/evasión solar (v2.0), misiones-historia (v2.1), fuego disciplinado de wingmen (v2.1.1) |
 | `README.md` | Este documento |
 
 ### Tests E2E
@@ -377,11 +383,13 @@ arcos de historia.
 
 ---
 
-*v2.1 · misiones-historia «La señal del Vacío» (6 capítulos, marcador ◆, Mapa
-del Vacío) · galaxia de 12 sistemas solares (24000², daño solar, evasión IA) ·
-hangar masivo de 60 niveles (flota de cientos, también la IA) · panel de flota
-permanente con órdenes · rejilla espacial de rendimiento · suministros por
-planeta · niebla de guerra*
+*v2.1.1 · la oleada de la historia cuenta caiga por quien caiga (+marcador ◆ al
+pirata más cercano) y las balas de tus wingmen ya no dañan a neutrales ·
+misiones-historia «La señal del Vacío» (6 capítulos, Mapa del Vacío) · galaxia
+de 12 sistemas solares (24000², daño solar, evasión IA) · hangar masivo de 60
+niveles (flota de cientos, también la IA) · panel de flota permanente con
+órdenes · rejilla espacial de rendimiento · suministros por planeta · niebla de
+guerra*
 
 > ⚠️ El save (`pixelfleet_save_v2`) no es compatible con partidas de mundos
 > anteriores (8000/12000): al entrar empezarás una partida nueva en la galaxia
