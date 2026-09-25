@@ -246,6 +246,15 @@ body {
 #tutorial b { color: #ffd166; }
 #tutorial .tut-skip { color: #44557a; font-size: 10px; }
 
+/* ===== v2.3 — foco luminoso del tutorial RTS ===== */
+#tut-spot { position: fixed; left: 0; top: 0; z-index: 13; pointer-events: none;
+  border: 3px solid #ffd166; border-radius: 10px;
+  box-shadow: 0 0 0 9999px rgba(3,4,10,.62), 0 0 16px rgba(255,209,102,.8);
+  transition: left .2s, top .2s, width .2s, height .2s; }
+/* en la fase RTS, guía y flota se dibujan POR ENCIMA del foco */
+body.tut-rts #tutorial { z-index: 15; }
+body.tut-rts #fleet-panel, body.tut-rts #fleet-menu { z-index: 14; }
+
 /* ===== v0.5.3 — barra lateral de accesos ===== */
 #toolbar { position: fixed; left: 14px; top: 50%; transform: translateY(-50%);
   z-index: 6; display: flex; flex-direction: column; gap: 8px; }

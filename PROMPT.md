@@ -134,9 +134,12 @@ Control estilo Age of Empires de las naves desplegadas. Diseño completo en el v
       (rol + ox/oy/oplanet) — al continuar, la flota sigue ejecutándola.
 - [x] ESC suelta la selección y cierra el menú; las naves destruidas o recogidas
       salen solas de la selección. E2E: 72 checks verdes.
-- [ ] **Tutorial del control RTS** (pendiente, a petición de Pedro: hacerlo más
-      adelante — p. ej. nuevos pasos del tutorial guiado enseñando SHIFT+arrastre
-      y el menú de botón derecho).
+- [x] **Tutorial del control RTS (v2.3)**: la guía se amplía a **11 pasos**;
+      los 5 nuevos enseñan selección por cuadro, orden con clic izquierdo,
+      menú de botón derecho y panel de flota, con un **foco luminoso**
+      (`#tut-spot`) que resalta la UI a usar. Se guarda `tutDone` en el save
+      y el menú ofrece **repetir la fase RTS** en partidas continuadas.
+      E2E: 291 checks verdes.
 - Subsume el ítem «órdenes con clic derecho» de la Fase F.
 
 ### Fase E completa + victoria real (v1.1/v1.2, implementadas 2026-09-11)
@@ -251,9 +254,14 @@ El roadmap v0.5 quedó completo en v1.2 (A-F + G/H). Nuevas líneas:
       planeta (migración sin invalidar). Panel de imperio y etiqueta del
       planeta muestran 🛰×n. E2E: **271 checks verdes**.
 - [ ] **Asedios con defensas orbitales** ~~(siguiente, pedido de Pedro)~~ →
-      HECHA (v2.2). A futuro:
-      tutorial del control RTS, jefes de facción, estaciones comerciales,
-      convoys de suministros, más arcos de historia.
+      HECHA (v2.2).
+- [x] **v2.3 — Tutorial del control RTS**: la guía pasa a 11 pasos, 5 de ellos
+      dedicados a la flota (selección, clic-izquierdo, menú derecho, panel de
+      flota) con foco luminoso, persistencia `tutDone` y reactivación desde el
+      menú en partidas continuadas. E2E: 291 checks verdes.
+- A futuro:
+      jefes de facción, estaciones comerciales, convoys de suministros,
+      más arcos de historia.
 - [x] **v1.6 — Hangar por niveles**: la flota activa ya NO depende de los
       planetas conquistados. El hangar tiene 5 ampliaciones comprables
       (150/300/450/600/750◈): cada nivel da **+2 flota activa y +2 almacén**

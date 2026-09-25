@@ -206,6 +206,25 @@ Tus naves desplegadas se controlan como en un **Age of Empires**:
   (v0.7.1) y vuelves a pilotar y disparar al instante.
 - Las órdenes **se guardan en la partida**: al continuar, tu flota sigue ejecutándolas.
 
+### 🎓 Tutorial del control de flota (v2.3)
+La guía guiada del menú **▶ NUEVA PARTIDA** ahora tiene **11 pasos**. Tras el
+arranque básico (movimiento, zoom, hangar, conquista) enseña el control RTS:
+
+- **Selección por cuadro**: mantén **SHIFT y arrastra** sobre tus naves (o
+  **SHIFT+clic** sobre una). También puedes seleccionar desde el panel de flota.
+- **Mover con clic izquierdo**: con naves seleccionadas, un clic en el mapa las
+  envía allí.
+- **Menú de órdenes con clic derecho**: abre el menú contextual para mover,
+  atacar la zona, defender un planeta, seguirte, guarnición, parar o recoger.
+- **Panel de flota**: abajo a la derecha lista tus naves; clic para seleccionar,
+  **TODAS** para el grupo entero, y los botones inferiores para dar órdenes
+  (MOVER/ATACAR arman la orden y el siguiente clic en el mapa la fija).
+
+Durante esta fase la interfaz que debes usar se **resalta con un foco luminoso**
+y el resto se atenúa. Al completar la guía se guarda `tutDone` y, si quieres
+repetirla en una partida ya empezada, el botón **🎓 REPETIR TUTORIAL DE FLOTA**
+del panel de ayuda del menú te lleva directo a la fase RTS.
+
 ### 🧭 Ritmo y distancias (v1.0, v2.0)
 - El mundo es **24000×24000** (v2.0; antes 12000): cruzarlo son **minutos reales**.
   Todas las velocidades ~÷3: tu nave, las imperiales, los wingmen y los
@@ -388,7 +407,7 @@ Posiciones a 10 Hz, disparos y chat retransmitidos **por sala**.
 | `style.css` | Estilo retro pixelado |
 | `game.js` | Motor completo + sistemas v0.3/v0.4/v0.5/v0.6 |
 | `server.js` | Servidor WebSocket multijugador con salas |
-| `tools/verify_ui.py` | Test E2E real (Playwright): 271 checks — menús, clics, tienda/tecnología, flota, hangar (60 niveles), notificaciones, RTS, panel de flota, facciones IA, niebla, economía, eventos, victoria, persistencia, zoom, suministros (v1.7), sistemas solares y daño/evasión solar (v2.0), misiones-historia (v2.1, objetivos cercanos v2.1.2), fuego disciplinado de wingmen (v2.1.1), asedios con torretas orbitales (v2.2) |
+| `tools/verify_ui.py` | Test E2E real (Playwright): 291 checks — menús, clics, tienda/tecnología, flota, hangar (60 niveles), notificaciones, RTS, panel de flota, facciones IA, niebla, economía, eventos, victoria, persistencia, zoom, suministros (v1.7), sistemas solares y daño/evasión solar (v2.0), misiones-historia (v2.1, objetivos cercanos v2.1.2), fuego disciplinado de wingmen (v2.1.1), asedios con torretas orbitales (v2.2), tutorial del control RTS (v2.3) |
 | `README.md` | Este documento |
 
 ### Tests E2E
@@ -400,14 +419,14 @@ PYTHONIOENCODING=utf-8 ../.venv/Scripts/python tools/verify_ui.py   # desde app/
 
 ## Próximas ideas
 
-Tutorial del control RTS (Fase G, pendiente a petición de Pedro) · jefes de
-facción · estaciones espaciales comerciales · convoys de suministros · más
-arcos de historia.
+Jefes de facción · estaciones espaciales comerciales · convoys de suministros ·
+más arcos de historia.
 
 ---
 
-*v2.2 · ASEDIOS con defensas orbitales: torretas que orbitan el planeta (máx. 4,
-8 HP, 120◈+20⛏ desde el hangar), disciplina de fuego (solo guerra/provocación/
+*v2.3 · TUTORIAL DEL CONTROL RTS: guía de 11 pasos con foco luminoso y
+persistencia `tutDone` · asedios con defensas orbitales (torretas 8 HP,
+120◈+20⛏ desde el hangar), disciplina de fuego (solo guerra/provocación/
 piratas), conquista bloqueada mientras queden defensas vivas, wingmen e IA
 sitiadores, IA que fortifica su capital · misiones-historia «La señal del Vacío»
 (6 capítulos, Mapa del Vacío) · galaxia de 12 sistemas solares (24000², daño

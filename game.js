@@ -1824,6 +1824,13 @@ $('input-name').addEventListener('input', e => {
 
 $('btn-play').onclick = startGame;
 $('btn-help').onclick = () => { $('panel-help').classList.remove('hidden'); $('panel-settings').classList.add('hidden'); };
+// v2.3: repetir la fase RTS del tutorial desde el menú (partidas continuadas)
+$('btn-retut').onclick = () => {
+  $('panel-help').classList.add('hidden');
+  const hadSave = !!(readSave() && readSave().player);
+  startGame();
+  if (hadSave) { tutStep = tutRtsStep; tutT = 0; tutorialOn = true; }   // fase RTS directa
+};
 $('btn-settings').onclick = () => { $('panel-settings').classList.remove('hidden'); $('panel-help').classList.add('hidden'); };
 document.querySelectorAll('.btn-close').forEach(b => b.onclick = () => {
   $('panel-help').classList.add('hidden');
@@ -1897,6 +1904,7 @@ function newGameInit() {
   applyUpgrades();
   player.hp = player.maxHp; player.fuel = player.maxFuel;
   if (player.credits < 40) player.credits = 40;   // fondos iniciales
+  tutDone = false;   // v2.3: partida nueva = guía sin completar
   tutStep = 0; tutT = 0; tutorialOn = true;       // tutorial solo en partida nueva
   if (typeof resetStory === 'function') resetStory();   // v2.1: historia desde el capítulo 1
   chatSys('🚀 Bienvenido a la galaxia, ' + player.name + '. Tu capital te espera: tienes 5 minutos de preparación.');
@@ -2115,6 +2123,7 @@ function saveGame() {
       standings,
       contracts: { offers: contracts.offers, active: contracts.active, seq: contracts.seq },
       story: { step: story.step, prog: story.prog, done: story.done, data: story.data },   // v2.1
+      tutDone: tutDone ? 1 : 0,   // v2.3: la guía completada se conserva
     }));
   } catch (e) {}
 }
@@ -2140,6 +2149,7 @@ function applySave(d) {
   player.auto = !!d.player.auto; player.role = d.player.role || 'hold';
   player.ox = d.player.ox ?? null; player.oy = d.player.oy ?? null;
   player.oplanet = d.player.oplanet ?? null;
+  tutDone = !!d.tutDone;   // v2.3
   // mundo: reset dinámico sobre el universo determinista
   for (const p of planets) {
     p.owner = null; p.shield = 0; p.shieldMax = 25;
@@ -3108,6 +3118,7 @@ function orderGroup(role, x, y, pidx) {
   saveGame();
 }
 function orderMoveTo(cx, cy) {
+  tutMoveSignal();   // v2.3: señal del tutorial RTS
   if (!selectedShips().length && !playerSel) { selection.clear(); return; }
   const w = clientToWorld(cx, cy);
   orderGroup('move', clamp(w.x, 20, WORLD.w - 20), clamp(w.y, 20, WORLD.h - 20), null);
@@ -3149,6 +3160,7 @@ function openFleetMenu(cx, cy) {
       fleetMenuEl.querySelector('#fm-planets').classList.toggle('hidden');
       return;
     }
+    tutMenuSignal();   // v2.3: señal del tutorial RTS
     if (act === 'move')     orderGroup('move', clamp(w.x, 20, WORLD.w - 20), clamp(w.y, 20, WORLD.h - 20), null);
     if (act === 'attack')   orderGroup('attack', clamp(w.x, 20, WORLD.w - 20), clamp(w.y, 20, WORLD.h - 20), null);
     if (act === 'defp')     orderGroup('defendP', null, null, +btn.dataset.pi);
@@ -3352,12 +3364,14 @@ function fpRender() {
   }
 }
 $('fp-all').onclick = () => {
+  tutPanelSignal();   // v2.3: señal del tutorial RTS
   for (const b of bots) if (b.built && b.alive) selection.add(b.uid);
   playerSel = player.alive;   // v2.0: TODAS incluye tu propia nave
 };
 document.querySelectorAll('#fp-orders button[data-fpo]').forEach(btn => btn.onclick = () => {
   const act = btn.dataset.fpo;
   if (!selectedShips().length && !playerSel) { notify('🛰️ Selecciona naves primero (clic en la lista o SHIFT+arrastre).', 'info', 'fp-sel', 3); return; }
+  tutPanelSignal();   // v2.3: señal del tutorial RTS
   if (act === 'move' || act === 'attack') {
     fpDisarm();
     pendingOrder = act;
@@ -3434,6 +3448,84 @@ addEventListener('keydown', e => {
 // (solo en partida NUEVA — al continuar no se pisa nada del save)
 const _update52 = update;
 update = function (dt) { _update52(dt); tutorialUpdate(dt); };
+
+/* =========================================================
+   v2.3 — TUTORIAL DEL CONTROL RTS (Fase G)
+   La guía sigue con 5 pasos que enseñan la flota: selección
+   SHIFT+arrastre, orden con clic izquierdo, menú de botón
+   derecho y panel de flota. Durante esta fase un foco
+   luminoso (#tut-spot) resalta lo que hay que usar y el resto
+   de la UI queda atenuada.
+   - tutDone se guarda en el save; completar la guía lo marca.
+   - El panel de ayuda del menú ofrece «Repetir tutorial de
+     flota»: en partidas continuadas arranca en la fase RTS.
+   ========================================================= */
+const tutSpotEl = document.getElementById('tut-spot');
+let tutDone = false;                 // persiste en el save (v2.3)
+const tutRtsStep = TUT.length;       // índice del primer paso RTS
+let tutOrdered = 0, tutMenuOrder = 0, tutPanelUsed = 0;   // señales de los pasos
+function tutMoveSignal()  { tutOrdered++; }
+function tutMenuSignal()  { tutMenuOrder++; }
+function tutPanelSignal() { tutPanelUsed++; }
+function ownDeployed()    { return bots.filter(b => b.built && b.alive); }
+
+TUT.push(
+  { html: '🛰️ <b>CONTROL DE FLOTA:</b> mantén <b>SHIFT</b> y <b>arrastra</b> un cuadro sobre tus naves (o haz <b>SHIFT+clic</b> sobre una) para <b>seleccionarlas</b>. También valen las filas del panel de flota (abajo a la derecha).',
+    spot: () => {
+      const s = ownDeployed()[0];
+      if (s) return { x: 2 * ((s.x - cam.x) * cam.zoom + VW / 2), y: 2 * ((s.y - cam.y) * cam.zoom + VH / 2), w: 110, h: 110 };
+      if (playerCapital) return { x: 2 * ((playerCapital.x - cam.x) * cam.zoom + VW / 2), y: 2 * ((playerCapital.y - cam.y) * cam.zoom + VH / 2), w: playerCapital.r * cam.zoom * 4 + 60, h: playerCapital.r * cam.zoom * 4 + 60 };
+      return null;
+    },
+    done: () => selection.size > 0 || playerSel },
+  { html: 'Con naves seleccionadas, un <b>CLIC IZQUIERDO</b> en el mapa las <b>mueve</b> hasta ese punto. Pruébalo: selecciona y haz clic en un punto vacío.',
+    done: () => tutOrdered > 0 },
+  { html: 'El <b>CLIC DERECHO</b> abre el <b>menú de órdenes</b>: mover, atacar la zona, defender un planeta tuyo, seguirme, guarnición, parar o recoger. Selecciona una nave y elige una orden del menú.',
+    spot: () => fleetMenuEl && !fleetMenuEl.classList.contains('hidden') ? fleetMenuEl : null,
+    done: () => tutMenuOrder > 0 },
+  { html: 'El <b>panel de flota</b> (abajo a la derecha) lista tus naves: <b>clic</b> en una fila para seleccionar, <b>TODAS</b> para el grupo entero y botones de órdenes al pie. <b>MOVER/ATACAR</b> arman la orden: el siguiente clic en el mapa la fija. Usa el panel una vez.',
+    spot: () => fleetPanelEl.classList.contains('hidden') ? null : fleetPanelEl,
+    done: () => tutPanelUsed > 0 },
+  { html: '✅ <b>¡Dominas el control de flota!</b> Selección por cuadro, órdenes por clic y panel de flota: con eso mandas campañas enteras sin soltar el mando de tu nave. Pulsa <b>T</b> para cerrar la guía.',
+    done: () => false },
+);
+
+// foco luminoso, contadores por paso y tutDone al completar
+const _tutUpdate23 = tutorialUpdate;
+let tutLastStep = -1;
+tutorialUpdate = function (dt) {
+  _tutUpdate23(dt);
+  const rtsOn = tutorialOn && tutStep >= tutRtsStep;
+  document.body.classList.toggle('tut-rts', rtsOn);
+  if (tutStep !== tutLastStep) {
+    if (rtsOn) { tutOrdered = 0; tutMenuOrder = 0; tutPanelUsed = 0; }
+    tutLastStep = tutStep;
+  }
+  if (!tutorialOn) {
+    if (tutSpotEl) tutSpotEl.classList.add('hidden');
+    // guía cerrada en el paso final (con T o completando el paso 10) = completada
+    if (!tutDone && tutLastStep >= TUT.length - 1) {
+      tutDone = true;
+      saveGame();
+      notify('🎓 Guía completada: control de flota dominado. ¡A conquistar!', 'good');
+    }
+    return;
+  }
+  const step = TUT[tutStep];
+  let r = null;
+  if (step && step.spot) {
+    const s = step.spot();
+    if (s) r = s.getBoundingClientRect ? s.getBoundingClientRect() : { left: s.x - s.w / 2, top: s.y - s.h / 2, width: s.w, height: s.h };
+  }
+  if (r && r.width > 4 && r.height > 4) {
+    tutSpotEl.classList.remove('hidden');
+    const pad = 6;
+    tutSpotEl.style.left = (r.left - pad) + 'px';
+    tutSpotEl.style.top = (r.top - pad) + 'px';
+    tutSpotEl.style.width = (r.width + pad * 2) + 'px';
+    tutSpotEl.style.height = (r.height + pad * 2) + 'px';
+  } else if (tutSpotEl) tutSpotEl.classList.add('hidden');
+};
 
 /* =========================================================
    v0.5.3 — BARRA LATERAL DE ACCESOS

@@ -1249,6 +1249,76 @@ with sync_playwright() as pw:
     check(page.evaluate("playerCapital.turrets.length") == 0,
           'v2.2: el save viejo sin torretas migra sin defensas (sin invalidar)')
 
+    # ===== 8c. v2.3: tutorial del control RTS =====
+    print('— v2.3: tutorial del control RTS —')
+    check(page.evaluate("TUT.length") == 11, 'guía ampliada a 11 pasos (6 base + 5 RTS)')
+    check(page.evaluate("tutDone") is False, 'v2.3: save viejo sin tutDone migra (guía sin completar)')
+    # la partida continuada no arranca el tutorial sola: se fuerza la fase RTS
+    page.evaluate("tutStep = tutRtsStep; tutT = 0; tutorialOn = true;")
+    page.wait_for_timeout(400)
+    check(page.locator('#tutorial').is_visible(), 'tutorial reactivado visible')
+    check('GUÍA 7/11' in page.locator('#tutorial').inner_text(), 'arranca en el paso RTS (GUÍA 7/11)')
+    check(page.locator('#tut-spot').is_visible(), 'foco luminoso visible en la fase RTS')
+    # paso 7 (selección): SHIFT+clic real sobre la nave propia desplegada, quieta y cerca
+    page.evaluate("""(() => {
+      const b = bots.find(b => b.built && b.alive);
+      b.x = player.x + 120; b.y = player.y; b.speed = 0;
+      b.role = 'hold'; b.ox = b.x; b.oy = b.y;
+      cam.x = player.x; cam.y = player.y;
+    })()""")
+    pos = page.evaluate("(() => { const b = bots.find(b => b.built && b.alive); return [2*((b.x-cam.x)*cam.zoom+VW/2), 2*((b.y-cam.y)*cam.zoom+VH/2)]; })()")
+    page.keyboard.down('Shift')
+    page.mouse.click(pos[0], pos[1])
+    page.keyboard.up('Shift')
+    page.wait_for_timeout(300)
+    check(page.evaluate("tutStep") == 7, 'paso 7 superado con SHIFT+clic real (selección)')
+    # paso 8 (orden de movimiento): clic izquierdo con la selección activa
+    page.mouse.click(pos[0] + 250, pos[1] + 60)
+    page.wait_for_timeout(300)
+    check(page.evaluate("tutStep") == 8, 'paso 8 superado con orden de movimiento (clic izquierdo)')
+    # paso 9 (menú contextual): la nave se movió en el paso 8; la volvemos a situar
+    page.evaluate("""(() => {
+      const b = bots.find(b => b.built && b.alive);
+      b.x = player.x + 120; b.y = player.y; b.speed = 0;
+      b.role = 'hold'; b.ox = b.x; b.oy = b.y;
+      cam.x = player.x; cam.y = player.y;
+    })()""")
+    pos = page.evaluate("(() => { const b = bots.find(b => b.built && b.alive); return [2*((b.x-cam.x)*cam.zoom+VW/2), 2*((b.y-cam.y)*cam.zoom+VH/2)]; })()")
+    page.mouse.click(pos[0], pos[1], button='right')
+    page.wait_for_timeout(300)
+    check(page.locator('#fleet-menu').is_visible(), 'menú contextual abierto con clic derecho')
+    check(page.locator('#tut-spot').is_visible(), 'el foco sigue al menú contextual')
+    page.click('#fleet-menu button[data-fm="follow"]')
+    page.wait_for_timeout(300)
+    check(page.evaluate("tutStep") == 9, 'paso 9 superado con orden desde el menú contextual')
+    # paso 10 (panel de flota): TODAS + orden directa desde el panel
+    page.click('#fp-all')
+    page.wait_for_timeout(150)
+    page.click('#fp-orders button[data-fpo="hold"]')
+    page.wait_for_timeout(300)
+    check(page.evaluate("tutStep") == 10, 'paso 10 superado usando el panel de flota')
+    check('GUÍA 11/11' in page.locator('#tutorial').inner_text(), 'paso final visible (GUÍA 11/11)')
+    check(page.locator('#tut-spot').is_hidden(), 'sin foco en el paso final')
+    page.keyboard.press('t')
+    page.wait_for_timeout(300)
+    check(page.locator('#tutorial').is_hidden(), 'T cierra la guía en el paso final')
+    check(page.evaluate("tutDone") is True, 'tutDone marcado al completar la guía')
+    check(page.evaluate("JSON.parse(localStorage.getItem('pixelfleet_save_v2')).tutDone") == 1,
+          'tutDone persistido en el save')
+    # reactivación desde el menú (partida continuada → fase RTS directa)
+    page.keyboard.press('m')
+    page.wait_for_timeout(300)
+    check(page.locator('#menu').is_visible(), 'vuelta al menú con M')
+    page.click('#btn-help')
+    check(page.locator('#btn-retut').is_visible(), 'botón «Repetir tutorial de flota» en la ayuda')
+    page.click('#btn-retut')
+    page.wait_for_timeout(600)
+    check(page.locator('#tutorial').is_visible(), 'tutorial reactivado desde el menú')
+    check('GUÍA 7/11' in page.locator('#tutorial').inner_text(),
+          'en partida continuada arranca directo en la fase RTS')
+    page.keyboard.press('t')
+    page.wait_for_timeout(200)
+
     # ===== 9. borrar partida =====
     print('— ajustes: BORRAR PARTIDA —')
     page.evaluate("saveGame()")
