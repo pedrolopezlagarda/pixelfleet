@@ -292,6 +292,7 @@ for (let si = 0; si < suns.length; si++) {
       capturer: null,     // facción que está capturando
       shield: 0,          // puntos de escudo (solo planetas con dueño)
       shieldMax: 25,
+      turrets: [],        // v2.2: defensas orbitales [{a, hp, cd, x, y, ...}]
     });
   }
 }
@@ -452,7 +453,7 @@ function initFactions() {
     cap.owner = c; cap.capital = true; cap.shieldMax = 100; cap.shield = 100;
     cap.name = 'CAPITAL ' + facName(c);
     cap.res = 'mineral'; cap.stock = CAP_START_STOCK;   // v1.7: capital minera también para la IA
-    facState[c] = { capital: cap, credits: 20, rel: {}, warT: {}, aiT: rnd(2, 6), buildT: 0, building: false, personality: null, hangarLvl: 0 };   // v2.0: hangarLvl — la IA amplía su flota como el jugador
+    facState[c] = { capital: cap, credits: 20, rel: {}, warT: {}, aiT: rnd(2, 6), buildT: 0, building: false, personality: null, hangarLvl: 0, turretT: 0, turretPlanet: null };   // v2.0: hangarLvl · v2.2: obra de torreta en curso
     for (const o of FACTION_COLORS) if (o !== c) facState[c].rel[o] = 0;
     spawnFactionShip(c);
   }
@@ -630,14 +631,23 @@ function facShipThink(b, dt) {
       b.shootCd = rnd(0.9, 1.8);
       return;
     }
-    // guerra: desgastar el escudo del planeta enemigo objetivo
-    if (t && t.type === 'attack' && t.p && t.p.owner && t.p.owner !== b.color && t.p.shield > 0) {
+    // guerra: asediar el planeta enemigo objetivo — primero las torretas
+    // orbitales (v2.2), luego el escudo
+    if (t && t.type === 'attack' && t.p && t.p.owner && t.p.owner !== b.color) {
       const rr = t.p.r + 300;
       if (dist2(b.x, b.y, t.p.x, t.p.y) < rr * rr) {
-        const a = Math.atan2(t.p.y - b.y, t.p.x - b.x) + rnd(-0.1, 0.1);
-        shoot(b.x + Math.cos(a) * 8, b.y + Math.sin(a) * 8, a, b.color, b);
-        b.shootCd = rnd(0.7, 1.2);
-        return;
+        let tt = null, tdd = Infinity;
+        for (const tur of t.p.turrets) {
+          const d = dist2(b.x, b.y, tur.x, tur.y);
+          if (d < tdd) { tdd = d; tt = tur; }
+        }
+        if (tt || t.p.shield > 0) {
+          const gx = tt ? tt.x : t.p.x, gy = tt ? tt.y : t.p.y;
+          const a = Math.atan2(gy - b.y, gx - b.x) + rnd(-0.1, 0.1);
+          shoot(b.x + Math.cos(a) * 8, b.y + Math.sin(a) * 8, a, b.color, b);
+          b.shootCd = rnd(0.7, 1.2);
+          return;
+        }
       }
     }
   }
@@ -789,6 +799,25 @@ const CAPTURE_RANGE_EXTRA = 24;
 const CAPTURE_TIME = 6;      // segundos para capturar (v0.5.2: conquista más pausada)
 const KILL_REWARD = 25;
 const PLANET_INCOME = 1;       // créditos/s por planeta propio
+// v2.2: asedios con defensas orbitales — torretas que orbitan el planeta,
+// disparan con disciplina (guerra/provocación/piratas) y bloquean la conquista
+const TURRET_MAX = 4;        // torretas máximas por planeta
+const TURRET_HP = 8;         // impactos que aguanta cada torreta
+const TURRET_RANGE = 420;    // alcance de fuego desde la torreta
+const TURRET_ORBIT = 55;     // distancia de la órbita sobre el limbo del planeta
+const TURRET_SPIN = 0.12;    // rad/s de órbita
+const TURRET_COST = 120, TURRET_ORE = 20, TURRET_TIME = 30;   // ◈ + ⛏ y segundos
+function addTurret(p) {   // la torreta es del dueño ACTUAL del planeta (se destruye al conquistar)
+  const t = {
+    turret: true, planet: p, a: p.turrets.length * (TAU / TURRET_MAX), hp: TURRET_HP, cd: rnd(0.4, 1.2),
+    color: p.owner, built: p.owner === player.color, flash: 0, x: p.x, y: p.y,
+    name: 'Torreta de ' + p.name,
+  };
+  t.x = p.x + Math.cos(t.a) * (p.r + TURRET_ORBIT);
+  t.y = p.y + Math.sin(t.a) * (p.r + TURRET_ORBIT);
+  p.turrets.push(t);
+  return t;
+}
 
 // v2.1.1: disciplina de fuego de tu flota — tus wingmen solo pueden DAÑAR a
 // facciones en guerra contigo o provocadas (por ti o porque te atacaron).
@@ -1021,6 +1050,24 @@ function update(dt) {
       f.buildT -= dt;
       if (f.buildT <= 0) { f.building = false; spawnFactionShip(c); }
     }
+    // v2.2: la IA fortifica sus planetas con torretas orbitales (simetría) —
+    // capital hasta el máximo, el resto hasta 2; mismo coste ◈+⛏ que el jugador
+    if (!f.turretT && f.credits >= 3 * TURRET_COST && f.capital && f.capital.owner === c) {
+      let tp = null;
+      if (f.capital.turrets.length < TURRET_MAX) tp = f.capital;
+      else for (const p of owned) { if (p.turrets.length < 2) { tp = p; break; } }
+      if (tp && takeStock(c, 'mineral', TURRET_ORE)) {
+        f.credits -= TURRET_COST; f.turretT = TURRET_TIME; f.turretPlanet = tp.idx;
+      }
+    }
+    if (f.turretT) {
+      const tp = planets[f.turretPlanet];
+      if (!tp || tp.owner !== c) f.turretT = 0;   // el astillero cayó: obra cancelada
+      else if ((f.turretT -= dt) <= 0) {
+        f.turretT = 0;
+        if (tp.turrets.length < TURRET_MAX) addTurret(tp);
+      }
+    }
     f.aiT -= dt;
     if (f.aiT <= 0) {
       f.aiT = rnd(30, 50);
@@ -1094,6 +1141,32 @@ function update(dt) {
       // v0.4: los proyectiles dañan los escudos de los planetas
       // v0.5.2: no dañan planetas de su propia facción
       if (!dead) for (const p of planets) {
+        // v2.2: las torretas orbitales reciben daño (asedio: van ANTES que el
+        // escudo — orbitan fuera). Misma disciplina que los wingmen: las balas
+        // de tu flota atraviesan las defensas de facciones neutras.
+        if (p.owner && p.owner !== pr.color && p.turrets.length &&
+            !(pr.owner && pr.owner.built && !wingmanCanEngage(p.owner)) &&
+            !(prepT > 0 && p === playerCapital)) {   // preparación: capital invulnerable
+          if (dist2(pr.x, pr.y, p.x, p.y) < (p.r + TURRET_ORBIT + 12) ** 2) {
+            for (const t of p.turrets) {
+              if (dist2(pr.x, pr.y, t.x, t.y) >= 100) continue;   // radio de impacto 10 u
+              t.hp -= pr.dmg || 1; t.flash = 0.15; dead = true;
+              if (pr.owner === player || (pr.owner && pr.owner.built)) playerAggro[p.owner] = 45;   // dañar defensas provoca
+              if (t.hp <= 0) {
+                p.turrets.splice(p.turrets.indexOf(t), 1);
+                explode(t.x, t.y, p.owner);
+                if (p.owner === player.color) {
+                  chatSys('💥 Torreta orbital de ' + p.name + ' destruida (' + p.turrets.length + '/' + TURRET_MAX + ' restantes).');
+                  notify('🛰️ Torreta de ' + p.name + ' destruida', 'danger');
+                } else if (pr.owner === player || (pr.owner && pr.owner.built)) {
+                  chatSys('🛰️ Defensa orbital de ' + p.name + ' destruida (' + p.turrets.length + ' restantes).');
+                }
+              } else if (p.owner === player.color) notify('⚠️ ¡Torreta de ' + p.name + ' bajo ataque!', 'warn', 'tur-' + p.name, 8);
+              break;
+            }
+          }
+        }
+        if (dead) break;
         if (!p.owner || p.shield <= 0 || p.owner === pr.color) continue;
         if (pr.owner && pr.owner.built && !wingmanCanEngage(p.owner)) continue;   // v2.1.1: idem escudos de neutrales
         if (dist2(pr.x, pr.y, p.x, p.y) < (p.r + 4) ** 2) {
@@ -1144,7 +1217,11 @@ function update(dt) {
       const faction = playerHere ? player.color : botColor;
       // v0.5: la capital no se puede capturar durante la preparación
       const protectedCap = prepT > 0 && p === playerCapital && faction !== player.color;
-      if (p.owner !== faction && p.shield <= 0 && !protectedCap) {
+      // v2.2: con defensas orbitales vivas no hay conquista — asedio primero
+      const sieged = p.owner && p.turrets.length > 0;
+      if (sieged && playerHere && faction === player.color && p.shield <= 0)
+        notify('🛰️ ' + p.name + ' tiene defensas orbitales: destrúyelas primero', 'warn', 'siege-' + p.name, 10);
+      if (p.owner !== faction && p.shield <= 0 && !protectedCap && !sieged) {
         if (p.capturer !== faction) { p.capturer = faction; p.capture = 0; }
         p.capture += dt / CAPTURE_TIME;
         if (playerHere && faction === player.color) capturing = { p, faction };
@@ -1152,6 +1229,10 @@ function update(dt) {
           const was = p.owner;
           p.owner = faction; p.capture = 0; p.capturer = null;
           p.shield = p.shieldMax;
+          if (p.turrets.length) {   // v2.2: las defensas caen con el planeta (no se capturan)
+            for (const t of p.turrets) explode(t.x, t.y, was || '#a0aec0');
+            p.turrets.length = 0;
+          }
           if (typeof onPlanetCaptured === 'function') onPlanetCaptured(p, was);
           if (faction === player.color) {
             player.credits += 10;
@@ -1358,6 +1439,10 @@ function draw() {
         ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2 / z;
         ctx.beginPath(); ctx.arc(p.x, p.y, p.r + 34 / z, 0, TAU); ctx.stroke();
       }
+      if (pVis && p.turrets.length) {   // v2.2: defensas orbitales en el mapa de estrategia
+        ctx.fillStyle = p.owner || '#fff';
+        for (const t of p.turrets) ctx.fillRect(t.x - 2 / z, t.y - 2 / z, 4 / z, 4 / z);
+      }
       ctx.globalAlpha = 1;
       continue;
     }
@@ -1379,11 +1464,24 @@ function draw() {
     ctx.fillStyle = 'rgba(126,249,255,0.06)';
     ctx.beginPath(); ctx.arc(p.x, p.y, p.r + 8, 0, TAU); ctx.fill();
     ctx.drawImage(p.sprite, p.x - p.r, p.y - p.r);
+    if (pVis && p.turrets.length) {
+      // v2.2: torretas orbitales — anillo de órbita sutil + plataformas del
+      // color de la facción (flash blanco al recibir daño, como las naves)
+      ctx.strokeStyle = 'rgba(255,255,255,0.10)'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.arc(p.x, p.y, p.r + TURRET_ORBIT, 0, TAU); ctx.stroke();
+      for (const t of p.turrets) {
+        ctx.fillStyle = t.flash > 0 ? '#ffffff' : (p.owner || '#8fa8d0');
+        ctx.fillRect(t.x - 3, t.y - 3, 6, 6);
+        ctx.strokeStyle = '#0b1020'; ctx.lineWidth = 1;
+        ctx.strokeRect(t.x - 3, t.y - 3, 6, 6);
+      }
+    }
     if (z >= 0.8 && dist2(p.x, p.y, player.x, player.y) < 700 * 700) {
       ctx.font = (6 / z) + 'px monospace'; ctx.textAlign = 'center';
       ctx.fillStyle = shownOwner || '#8fa8d0';
       // v1.7: en planetas propios se muestra además su stock local (⛏ 42)
       ctx.fillText(p.name + (shownOwner ? ' ●' : '') + (p.capital ? ' ★' : '') +
+        (pVis && p.turrets.length ? ' 🛰×' + p.turrets.length : '') +   // v2.2: defensas orbitales visibles
         (pVis ? ' ' + RES_ICON[p.res] + (p.owner === player.color && p.res !== 'creditos' ? ' ' + Math.floor(p.stock) : '') : ' ?'),
         p.x, p.y - p.r - 4 / z);
     }
@@ -1989,7 +2087,7 @@ function saveGame() {
       prepT: Math.max(0, prepT),
       // solo planetas con dueño (los neutros son el estado inicial determinista)
       // v1.7: se guarda también el stock local de suministros de cada planeta
-      planets: planets.map((p, i) => p.owner ? { i, owner: p.owner, shield: p.shield, cap: p.capital ? 1 : 0, known: p.knownOwner || null, stock: Math.round(p.stock * 100) / 100 } : null).filter(Boolean),
+      planets: planets.map((p, i) => p.owner ? { i, owner: p.owner, shield: p.shield, cap: p.capital ? 1 : 0, known: p.knownOwner || null, stock: Math.round(p.stock * 100) / 100, tur: p.turrets.length } : null).filter(Boolean),   // v2.2: tur = nº de torretas (HP al completo al cargar)
       fog: Array.from(explored).join(''),   // v0.9: mapa explorado (1600 celdas 0/1)
       bots: bots.filter(b => !b.pirate).map(b => ({   // v1.3: los piratas son del evento, no se guardan
         name: b.name, color: b.color, x: b.x, y: b.y,
@@ -2006,6 +2104,7 @@ function saveGame() {
           buildT: facState[c].buildT, building: facState[c].building, dead: !!facState[c].dead,
           personality: facState[c].personality || null,   // v1.3
           hangarLvl: facState[c].hangarLvl || 0,   // v2.0
+          turretT: facState[c].turretT || 0, turretPlanet: facState[c].turretPlanet ?? null,   // v2.2
         };
         return o;
       })(),
@@ -2046,6 +2145,7 @@ function applySave(d) {
     p.owner = null; p.shield = 0; p.shieldMax = 25;
     p.capture = 0; p.capturer = null; p.capital = false;
     p.stock = 0;   // v1.7
+    p.turrets = [];   // v2.2: defensas orbitales (se reconstruyen del save)
   }
   playerCapital = planets[d.capitalIdx] || null;
   if (playerCapital) {
@@ -2056,7 +2156,7 @@ function applySave(d) {
   // v0.8: esqueleto de facciones imperio (antes de restaurar capitales)
   for (const c of FACTION_COLORS) {
     if (c === player.color) continue;
-    if (!facState[c]) facState[c] = { capital: null, credits: 10, rel: {}, warT: {}, aiT: rnd(2, 6), buildT: 0, building: false, hangarLvl: 0 };
+    if (!facState[c]) facState[c] = { capital: null, credits: 10, rel: {}, warT: {}, aiT: rnd(2, 6), buildT: 0, building: false, hangarLvl: 0, turretT: 0, turretPlanet: null };
     for (const o of FACTION_COLORS) if (o !== c && facState[c].rel[o] == null) facState[c].rel[o] = 0;
   }
   for (const sp of d.planets || []) {
@@ -2067,6 +2167,8 @@ function applySave(d) {
     // v1.7: stock local. Migración de saves viejos (sin stock): 0, salvo las
     // capitales, que arrancan con 30⛏ (regla «capital minera»)
     p.stock = sp.stock != null ? Math.min(STOCK_CAP, sp.stock) : (sp.cap ? CAP_START_STOCK : 0);
+    // v2.2: torretas orbitales (solo el número; HP fresco y ángulos repartidos)
+    if (sp.tur) for (let ti = 0; ti < Math.min(TURRET_MAX, sp.tur); ti++) addTurret(p);
     // v0.8: restaurar capitales de facción (escudo grande + nombre + enlace en facState)
     if (sp.cap && sp.owner !== player.color) {
       p.capital = true; p.shieldMax = 100; p.name = 'CAPITAL ' + facName(sp.owner);
@@ -2097,6 +2199,7 @@ function applySave(d) {
     facState[c].dead = !!sv.dead;   // v1.2
     facState[c].personality = sv.personality || PERS_KEYS[rndi(0, PERS_KEYS.length - 1)];   // v1.3
     facState[c].hangarLvl = sv.hangarLvl || 0;   // v2.0
+    facState[c].turretT = sv.turretT || 0; facState[c].turretPlanet = sv.turretPlanet ?? null;   // v2.2
     if (sv.rel) facState[c].rel = sv.rel;
     if (sv.warT) facState[c].warT = sv.warT;
   }
@@ -2295,6 +2398,10 @@ const SHIPS = [   // v1.1: HP alto (10-20 impactos) — el mod de hp se escala �
   { id: 'explorador', name: 'Explorador', desc: 'Depósito de combustible ×1.6', cost: 200, resType: 'gas',    resCost: 25, buildTime: 30, accel: 1.05, rof: 1.0,  hp: 0,  fuel: 1.6, size: 1.0 },
 ];
 const shipDef = id => SHIPS.find(s => s.id === id) || SHIPS[0];
+// v2.2: la torreta orbital es un ítem construible más (en la cola del planeta),
+// pero no es una nave: no ocupa hangar y se instala en órbita al terminar
+const TURRET_DEF = { id: 'turret', name: 'Torreta orbital', desc: 'Defensa del astillero · 8 HP · dispara con disciplina', cost: TURRET_COST, resType: 'mineral', resCost: TURRET_ORE, buildTime: TURRET_TIME };
+const itemDef = id => id === 'turret' ? TURRET_DEF : shipDef(id);
 function getShipMod() { return shipDef(player.ship); }
 
 // aplicar modificadores del modelo sobre las mejoras
@@ -2431,9 +2538,14 @@ function renderHangar() {
   $('hangar-queue').innerHTML = Object.keys(groups).map(pi => {
     const p = planets[pi];
     return `<div class="hangar-queue-row">🏗️ ${p && p.capital ? '★ ' : ''}${p ? p.name : '?'}: ` +
-      groups[pi].map(i => `<span data-qt="${i}">${shipDef(buildQueue[i].type).name} ${Math.ceil(buildQueue[i].t)}s</span>`).join(' · ') +
+      groups[pi].map(i => `<span data-qt="${i}">${itemDef(buildQueue[i].type).name} ${Math.ceil(buildQueue[i].t)}s</span>`).join(' · ') +
       `</div>`;
   }).join('');
+  // v2.2: defensas orbitales del astillero seleccionado (torreta = ítem de cola)
+  const yardDef = shipyard();
+  $('hangar-defenses').innerHTML = yardDef ?
+    `<div class="hangar-item"><div class="info"><b>🛰️ Torreta orbital</b><span>${TURRET_DEF.desc} · ${TURRET_TIME}s · instaladas: <span data-tstat>${yardDef.turrets.length}/${TURRET_MAX}</span></span></div>
+     <button data-build="turret">${TURRET_COST}◈ + ${TURRET_ORE}⛏</button></div>` : '';
   const fleet = bots.filter(b => b.built);
   $('hangar-fleet').innerHTML = fleet.length ? fleet.map(b =>
     `<div class="hangar-item"><div class="info"><b>${b.name}</b><span>${shipDef(b.shipType).name} · <span data-hp="${b.uid}">${Math.ceil(b.hp)}</span> HP · ${roleLabel(b)}</span></div>
@@ -2472,7 +2584,7 @@ function refreshHangar() {
   $('hangar-credits').textContent = Math.floor(player.credits);
   $('hangar-current').textContent = shipDef(player.ship).name;
   const q = buildQueue.length
-    ? ' · 🏗️ ' + shipDef(buildQueue[0].type).name + ' ' + Math.ceil(buildQueue[0].t) + 's' +
+    ? ' · 🏗️ ' + itemDef(buildQueue[0].type).name + ' ' + Math.ceil(buildQueue[0].t) + 's' +
       (buildQueue.length > 1 ? ' (+' + (buildQueue.length - 1) + ' en cola)' : '')
     : '';
   $('hangar-qstat').textContent = q;
@@ -2492,20 +2604,27 @@ function refreshHangar() {
   const yard = shipyard();
   const yardFull = yard ? buildQueue.filter(qi => qi.planet === planets.indexOf(yard)).length >= QUEUE_PER_PLANET : false;
   hangarEl.querySelectorAll('button[data-build]').forEach(btn => {
-    const s = shipDef(btn.dataset.build);
+    const s = itemDef(btn.dataset.build);
+    const isTur = btn.dataset.build === 'turret';   // v2.2: no ocupa hangar, su tope es el anillo orbital
     const noCred = player.credits < s.cost;
     const noRes = stockOf(player.color, s.resType) < s.resCost;
-    const full = hangarShips.length + buildQueue.length >= hangarMax();
-    btn.disabled = noCred || noRes || full || yardFull;
+    const full = !isTur && hangarShips.length + buildQueue.filter(qi => qi.type !== 'turret').length >= hangarMax();
+    const turFull = isTur && yard && yard.turrets.length >= TURRET_MAX;
+    btn.disabled = noCred || noRes || full || yardFull || turFull;
     btn.title = noCred ? 'Te faltan ◈: cuesta ' + s.cost + '◈'
       : noRes ? 'Te falta ' + RES_ICON[s.resType] + ': cuesta ' + s.resCost + ' y tienes ' + Math.floor(stockOf(player.color, s.resType))
+      : turFull ? 'Este planeta ya tiene el máximo de defensas (' + TURRET_MAX + ')'
       : yardFull ? 'Astillero saturado (máx. ' + QUEUE_PER_PLANET + ' en cola en este planeta)'
       : full ? 'Hangar lleno' : '';
+  });
+  // v2.2: contador de torretas del astillero (solo texto por frame)
+  hangarEl.querySelectorAll('span[data-tstat]').forEach(sp => {
+    if (yard) sp.textContent = yard.turrets.length + '/' + TURRET_MAX;
   });
   // v1.7: cuentas atrás de la cola agrupada por planeta (solo texto por frame)
   hangarEl.querySelectorAll('span[data-qt]').forEach(sp => {
     const qi = buildQueue[+sp.dataset.qt];
-    if (qi) sp.textContent = shipDef(qi.type).name + ' ' + Math.ceil(qi.t) + 's';
+    if (qi) sp.textContent = itemDef(qi.type).name + ' ' + Math.ceil(qi.t) + 's';
   });
   hangarEl.querySelectorAll('button[data-hact]').forEach(btn => {
     btn.disabled = btn.dataset.hact === 'pilot' ? !near : fleetCount() >= fleetMax();
@@ -2655,13 +2774,19 @@ function nearCapital() {
 }
 function fleetCount() { return frameFleetCount; }   // v2.0: cache por frame (antes: filter O(n) por llamada)
 function queueShip(type, planetIdx) {
-  const s = shipDef(type);
+  const s = itemDef(type);
   // v1.7: el astillero es un planeta PROPIO cualquiera (por defecto, la capital)
   const yard = (planetIdx != null && planets[planetIdx] && planets[planetIdx].owner === player.color)
     ? planets[planetIdx] : playerCapital;
   if (!yard) return;
+  // v2.2: las torretas se instalan en el propio astillero (máx. TURRET_MAX) y
+  // no ocupan hueco de hangar — su límite es la cola del planeta y los recursos
+  if (type === 'turret' && yard.turrets.length >= TURRET_MAX) {
+    chatSys('🛰️ ' + yard.name + ' ya tiene el máximo de defensas orbitales (' + TURRET_MAX + ').');
+    return;
+  }
   // v1.5.2: las órdenes llegan por radio — ya no hace falta estar junto a la capital
-  if (hangarShips.length + buildQueue.length >= hangarMax()) { chatSys('🏗️ Hangar lleno (' + hangarMax() + ' naves).'); return; }
+  if (type !== 'turret' && hangarShips.length + buildQueue.filter(q => q.type !== 'turret').length >= hangarMax()) { chatSys('🏗️ Hangar lleno (' + hangarMax() + ' naves).'); return; }
   if (buildQueue.filter(q => q.planet === planets.indexOf(yard)).length >= QUEUE_PER_PLANET) {
     notify('🏗️ Astillero de ' + yard.name + ' saturado (máx. ' + QUEUE_PER_PLANET + ' en cola)', 'warn');
     chatSys('🏗️ El astillero de ' + yard.name + ' ya tiene ' + QUEUE_PER_PLANET + ' naves en cola.');
@@ -2687,7 +2812,7 @@ function buildUpdate(dt) {
   for (let i = buildQueue.length - 1; i >= 0; i--) {
     const p = planets[buildQueue[i].planet];
     if (p && p.owner === player.color) continue;
-    chatSys('🏗️ Construcción de ' + shipDef(buildQueue[i].type).name + ' CANCELADA: ' + (p ? p.name : 'el astillero') + ' ya no es tuyo.');
+    chatSys('🏗️ Construcción de ' + itemDef(buildQueue[i].type).name + ' CANCELADA: ' + (p ? p.name : 'el astillero') + ' ya no es tuyo.');
     buildQueue.splice(i, 1);
     cancelled = true;
   }
@@ -2705,10 +2830,20 @@ function buildUpdate(dt) {
     const q = buildQueue[i];
     if (q.t > 0) continue;
     buildQueue.splice(i, 1);
-    hangarShips.push(q.type);   // la nave va AL HANGAR: la despliegas tú
     const yardName = planets[q.planet] ? planets[q.planet].name : 'la capital';
-    chatSys('🛰️ ' + shipDef(q.type).name + ' construido y en el hangar (' + hangarShips.length + '/' + hangarMax() + ') — astillero: ' + yardName);
-    notify('🛰️ ' + shipDef(q.type).name + ' listo en el hangar', 'good');   // v1.6.1
+    if (q.type === 'turret') {
+      // v2.2: la torreta no va al hangar — entra en órbita del astillero
+      const p = planets[q.planet];
+      if (p && p.owner === player.color && p.turrets.length < TURRET_MAX) {
+        addTurret(p);
+        chatSys('🛰️ Torreta orbital operativa en ' + yardName + ' (' + p.turrets.length + '/' + TURRET_MAX + ').');
+        notify('🛰️ Torreta orbital operativa en ' + yardName, 'good');
+      }
+    } else {
+      hangarShips.push(q.type);   // la nave va AL HANGAR: la despliegas tú
+      chatSys('🛰️ ' + shipDef(q.type).name + ' construido y en el hangar (' + hangarShips.length + '/' + hangarMax() + ') — astillero: ' + yardName);
+      notify('🛰️ ' + shipDef(q.type).name + ' listo en el hangar', 'good');   // v1.6.1
+    }
     done = true;
   }
   // evento discreto: si el hangar está abierto, se re-renderiza (regla v0.5.3b)
@@ -2860,7 +2995,26 @@ function wingmanUpdate(b, dt) {
       const ta = Math.atan2(tgt.y - b.y, tgt.x - b.x) + rnd(-0.12, 0.12);
       shoot(b.x + Math.cos(ta) * 8, b.y + Math.sin(ta) * 8, ta, b.color, b);
       b.shootCd = rnd(0.9, 1.7) * mod.rof;
-    } else b.shootCd = 0.3;
+    } else {
+      // v2.2: sin naves objetivo, en guerra/provocación tus naves asedian las
+      // defensas orbitales enemigas que tengan a tiro (hay que tumbarlas para
+      // conquistar; el fuego sobre escudos sigue siendo manual del jugador)
+      let tt = null;
+      for (const p of planets) {
+        if (!p.owner || p.owner === player.color || !p.turrets.length) continue;
+        if (!wingmanCanEngage(p.owner)) continue;
+        if (dist2(p.x, p.y, fireAnchor.x, fireAnchor.y) > (fireRange + p.r + TURRET_ORBIT) ** 2) continue;
+        for (const tur of p.turrets) {
+          const d = dist2(tur.x, tur.y, fireAnchor.x, fireAnchor.y);
+          if (d < td) { td = d; tt = tur; }
+        }
+      }
+      if (tt) {
+        const ta = Math.atan2(tt.y - b.y, tt.x - b.x) + rnd(-0.12, 0.12);
+        shoot(b.x + Math.cos(ta) * 8, b.y + Math.sin(ta) * 8, ta, b.color, b);
+        b.shootCd = rnd(0.9, 1.7) * mod.rof;
+      } else b.shootCd = 0.3;
+    }
   }
 }
 
@@ -3083,6 +3237,25 @@ function playerAutoUpdate(dt, accel) {
             player.tech.blaster ? 2 : 1);
       player.shootCd = 0.22 * getShipMod().rof * (player.tech.enjambre ? 1 / 1.6 : 1) * (player.tech.blaster ? 1 / 0.75 : 1) / (1 + 0.25 * player.upgrades.cadencia);
       net.sendShoot();
+    } else {
+      // v2.2: el automático también asedia defensas orbitales en guerra/provocación
+      let tt = null;
+      for (const p of planets) {
+        if (!p.owner || p.owner === player.color || !p.turrets.length) continue;
+        if (!wingmanCanEngage(p.owner)) continue;
+        if (dist2(p.x, p.y, player.x, player.y) > (420 + p.r + TURRET_ORBIT) ** 2) continue;
+        for (const tur of p.turrets) {
+          const d = dist2(tur.x, tur.y, player.x, player.y);
+          if (d < td) { td = d; tt = tur; }
+        }
+      }
+      if (tt) {
+        const ta = Math.atan2(tt.y - player.y, tt.x - player.x) + rnd(-0.12, 0.12);
+        shoot(player.x + Math.cos(ta) * 8, player.y + Math.sin(ta) * 8, ta, player.color, player,
+              player.tech.blaster ? 2 : 1);
+        player.shootCd = 0.22 * getShipMod().rof * (player.tech.enjambre ? 1 / 1.6 : 1) * (player.tech.blaster ? 1 / 0.75 : 1) / (1 + 0.25 * player.upgrades.cadencia);
+        net.sendShoot();
+      }
     }
   }
 }
@@ -3344,6 +3517,7 @@ function renderEmpire() {
   html += own.length
     ? own.map(p => '<div class="diplo-row"><span style="color:' + player.color + '">' +
         (p === playerCapital ? '★ ' : '') + p.name + ' ' + RES_ICON[p.res] + '</span><span>🛡 ' + Math.floor(p.shield) + '/' + p.shieldMax +
+        (p.turrets.length ? ' · 🛰️×' + p.turrets.length : '') +   // v2.2: defensas orbitales
         ' · +' + (p === playerCapital ? PLANET_INCOME * 3 : (p.res === 'creditos' ? PLANET_INCOME : PLANET_INCOME * 0.5)) + '◈/s' +
         (p.res !== 'creditos' ? ' · ' + RES_ICON[p.res] + ' ' + Math.floor(p.stock) + '/' + STOCK_CAP : '') + '</span></div>').join('')
     : '<div class="diplo-row"><span>sin planetas</span></div>';
@@ -3875,3 +4049,56 @@ addEventListener('keydown', e => {
   if (document.activeElement === chatInput) return;
   if (e.key.toLowerCase() === 'j') toggleGamePanel('missions');
 });
+
+/* =========================================================
+   v2.2 — ASEDIOS CON DEFENSAS ORBITALES
+   Cada planeta con dueño puede tener hasta TURRET_MAX torretas orbitales
+   (se construyen desde el hangar con la cola del propio planeta).
+   - Orbitan el planeta y disparan con DISCIPLINA (decisión de Pedro): solo a
+     piratas, o a facciones en guerra / provocadas — nunca en paz.
+   - Tienen HP propio y reciben daño ANTES que el escudo (orbitan fuera).
+   - Mientras queden torretas vivas, el planeta NO se puede conquistar:
+     asediar = tumbar las defensas primero. Al conquistar, caen con el planeta.
+   - La IA fortifica su capital y sus planetas con las mismas reglas/costes.
+   ========================================================= */
+function turretUpdate(dt) {
+  for (const p of planets) {
+    if (!p.turrets.length) continue;
+    if (!p.owner) { p.turrets.length = 0; continue; }   // seguridad: sin dueño no hay defensas
+    const ownIsPlayer = p.owner === player.color;
+    for (const t of p.turrets) {
+      t.a += TURRET_SPIN * dt;
+      t.x = p.x + Math.cos(t.a) * (p.r + TURRET_ORBIT);
+      t.y = p.y + Math.sin(t.a) * (p.r + TURRET_ORBIT);
+      if (t.flash > 0) t.flash -= dt;
+      t.cd -= dt;
+      if (t.cd > 0 || prepT > 0) continue;   // en preparación nadie pelea
+      let tgt = null, td = TURRET_RANGE * TURRET_RANGE;
+      // el jugador: solo si la facción dueña está en guerra contigo o provocada
+      if (!ownIsPlayer && player.alive && player.invuln <= 0 &&
+          ((standings[p.owner] || 0) <= -30 || (playerAggro[p.owner] || 0) > 0)) {
+        const d = dist2(t.x, t.y, player.x, player.y);
+        if (d < td) { td = d; tgt = player; }
+      }
+      gridEach(t.x, t.y, TURRET_RANGE, o => {
+        if (!o.alive || o.color === p.owner) return false;
+        let ok;
+        if (o.pirate) ok = true;   // v1.3: piratas, enemigos de todos
+        else if (ownIsPlayer) ok = wingmanCanEngage(o.color);   // tu disciplina (v2.1.1)
+        else if (o.built) ok = (standings[p.owner] || 0) <= -30 || (playerAggro[p.owner] || 0) > 0;
+        else ok = o.imp && atWarFF(p.owner, o.color);   // facción↔facción: solo guerra
+        if (!ok) return false;
+        const d = dist2(t.x, t.y, o.x, o.y);
+        if (d < td) { td = d; tgt = o; }
+        return false;
+      });
+      if (tgt) {
+        const a = Math.atan2(tgt.y - t.y, tgt.x - t.x) + rnd(-0.06, 0.06);   // torretas: precisas
+        shoot(t.x + Math.cos(a) * 6, t.y + Math.sin(a) * 6, a, p.owner, t);
+        t.cd = rnd(1.0, 1.6);
+      } else t.cd = 0.3;
+    }
+  }
+}
+const _updateT = update;
+update = function (dt) { _updateT(dt); turretUpdate(dt); };

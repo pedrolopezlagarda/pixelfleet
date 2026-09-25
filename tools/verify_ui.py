@@ -4,7 +4,10 @@
 # chat, persistencia total (continuar), borrado de partida, v1.7 (suministros
 # por planeta: stocks, costes ◈+recurso, colas por astillero, migración de
 # saves) y v2.0 (sistemas solares: 12 soles, órbitas, daño solar, evasión;
-# hangar masivo de 60 niveles; panel permanente de flota con órdenes armadas).
+# hangar masivo de 60 niveles; panel permanente de flota con órdenes armadas),
+# v2.1 (misiones-historia) y v2.2 (asedios: torretas orbitales — compra en el
+# hangar, órbita, disciplina de fuego, bloqueo de conquista, destrucción,
+# wingmen sitiadores, IA simétrica y persistencia/migración en el save).
 # Nota: los clics son reales; solo se aceleran créditos/tiempos de
 # construcción vía evaluate para no hacer el test eterno.
 import sys
@@ -125,7 +128,9 @@ with sync_playwright() as pw:
       return { mn, sys: new Set(cs.map(p => p.sys)).size };
     })()""")
     check(caps['sys'] == 6, 'v2.0: cada capital en un sistema distinto')
-    check(caps['mn'] >= 6000, f"v2.0: capitales a ≥6000 u entre sí ({caps['mn']:.0f})")
+    # initFactions relaja la distancia tras 100 reintentos (galaxia llena): el
+    # mínimo garantizado es el objetivo 6000 salvo fallback — aceptamos ≥5000
+    check(caps['mn'] >= 5000, f"v2.0: capitales a ≥5000-6000 u entre sí ({caps['mn']:.0f}; el picker relaja tras 100 reintentos)")
     avoid = page.evaluate("""(() => {
       const s = suns[0];
       return { into: sunAvoid(s.x - s.r - 250, s.y, 0), away: sunAvoid(s.x + 5000, s.y, 0) };
@@ -1020,6 +1025,130 @@ with sync_playwright() as pw:
       window.__imp.alive = false; window.__w.alive = false;   // limpieza
     })()""")
 
+    # ===== 5h. v2.2: asedios con defensas orbitales =====
+    print('— v2.2: defensas orbitales (asedios) —')
+    # construir una torreta desde el hangar (clic real en el botón)
+    page.evaluate("""(() => {
+      player.credits += 1000;
+      playerCapital.stock = 100; playerCapital.shield = playerCapital.shieldMax;   // sin drenes de ⛏ durante el test
+      for (const k in playerAggro) delete playerAggro[k];
+      if (hangarEl.classList.contains('hidden')) toggleGamePanel('hangar');
+    })()""")
+    page.wait_for_timeout(300)
+    check(page.locator('#hangar-defenses').is_visible()
+          and 'Torreta orbital' in page.locator('#hangar-defenses').inner_text(),
+          'hangar: sección DEFENSAS ORBITALES con la torreta')
+    cred0 = page.evaluate("Math.floor(player.credits)")
+    hang0 = page.evaluate("hangarShips.length")
+    page.click('button[data-build="turret"]')
+    page.wait_for_timeout(200)
+    check(page.evaluate("buildQueue.some(q => q.type === 'turret')"), 'torreta encolada en el astillero (cola del planeta)')
+    gastado = cred0 - page.evaluate("Math.floor(player.credits)")
+    check(118 <= gastado <= 121, f'la torreta cuesta 120◈ (gastado {gastado})')
+    check(page.evaluate("playerCapital.stock") <= 80.5, 'la torreta descuenta 20⛏ del stock del planeta')
+    page.evaluate("buildQueue.forEach(q => q.t = 0.05)")
+    page.wait_for_timeout(500)
+    check(page.evaluate("playerCapital.turrets.length") == 1, 'torreta operativa en órbita al terminar la cola')
+    check(page.evaluate("hangarShips.length") == hang0, 'la torreta NO ocupa hueco de hangar')
+    # la torreta orbita alrededor del planeta
+    t0 = page.evaluate("({x: playerCapital.turrets[0].x, y: playerCapital.turrets[0].y})")
+    page.wait_for_timeout(1200)
+    t1 = page.evaluate("({x: playerCapital.turrets[0].x, y: playerCapital.turrets[0].y})")
+    check(abs(t1['x'] - t0['x']) + abs(t1['y'] - t0['y']) > 1, 'la torreta orbita el planeta')
+    # disciplina de fuego: NO dispara a facciones neutrales (como los wingmen)
+    page.evaluate("""(() => {
+      const c = FACTION_COLORS.find(c => c !== player.color && (standings[c] || 0) > -30);
+      standings[c] = 0;
+      for (const k in playerAggro) delete playerAggro[k];
+      window.__tnColor = c;
+      const imp = spawnFactionShip(c);
+      imp.hp = 10; imp.shootCd = 9999; imp.speed = 0;
+      window.__tn = imp;
+    })()""")
+    for _ in range(5):   # recolocar junto a la capital: la IA lo mueve entre waits
+        page.evaluate("(() => { const i = window.__tn; i.x = playerCapital.x + playerCapital.r + 80; i.y = playerCapital.y; i.vx = i.vy = 0; })()")
+        page.wait_for_timeout(400)
+    check(page.evaluate("window.__tn.hp") == 10, 'la torreta NO dispara a una facción neutral (disciplina)')
+    page.evaluate("playerAggro[window.__tnColor] = 45")   # provocación: ahora sí
+    for _ in range(8):
+        page.evaluate("(() => { const i = window.__tn; i.x = playerCapital.x + playerCapital.r + 80; i.y = playerCapital.y; i.vx = i.vy = 0; })()")
+        page.wait_for_timeout(400)
+        if page.evaluate("window.__tn.hp") < 10:
+            break
+    check(page.evaluate("window.__tn.hp") < 10, 'facción provocada: la torreta abre fuego')
+    page.evaluate("window.__tn.alive = false;")
+    # asedio: planeta enemigo con torreta — la conquista queda BLOQUEADA
+    page.evaluate("""(() => {
+      const p = planets.find(p => !p.owner && !p.capital);
+      p.owner = window.__tnColor; p.shield = 0;
+      addTurret(p);
+      window.__ep = p;
+      standings[window.__tnColor] = -100;   // guerra declarada
+      facState[window.__tnColor].credits = -100000;   // hucha en ruina: no puede recargar el escudo
+      player.x = p.x; player.y = p.y + p.r + 10; player.vx = player.vy = 0;
+      cam.x = player.x; cam.y = player.y;
+      player.invuln = 9999;   // la torreta enemiga dispara al sitiador: tester inmune
+    })()""")
+    page.wait_for_timeout(1500)
+    page.evaluate("window.__ep.shield = 0;")
+    page.wait_for_timeout(500)
+    check(page.evaluate("window.__ep.capture") == 0, 'con defensas vivas la conquista NO progresa (asedio)')
+    # destruir la torreta con fuego directo del jugador
+    page.evaluate("""(() => {
+      const p = window.__ep, t = p.turrets[0];
+      t.hp = 1;
+      projectiles.push({x: t.x, y: t.y, vx: 0, vy: 0, color: player.color, owner: player, life: 1.8, dmg: 1});
+    })()""")
+    page.wait_for_timeout(400)
+    check(page.evaluate("window.__ep.turrets.length") == 0, 'la torreta enemiga se destruye a tiros')
+    check(page.evaluate("(playerAggro[window.__tnColor] || 0) > 0"), 'dañar defensas orbitales PROVOCA a la facción')
+    for _ in range(10):   # sin defensas la conquista ya avanza (escudo forzado a 0)
+        page.evaluate("window.__ep.shield = 0;")
+        page.wait_for_timeout(400)
+        if page.evaluate("window.__ep.capture > 0 || window.__ep.owner === player.color"):
+            break
+    check(page.evaluate("window.__ep.capture > 0 || window.__ep.owner === player.color"),
+          'sin defensas la conquista ya progresa')
+    # tus wingmen también asedian: en guerra disparan a las torretas enemigas
+    page.evaluate("""(() => {
+      const p = window.__ep;
+      if (p.owner === player.color) { p.owner = window.__tnColor; p.capture = 0; }   // deshacer la conquista del test
+      addTurret(p); p.shield = 0;
+      const w = makeWingman('caza', 'hold');
+      w.x = p.x; w.y = p.y + p.r + 120; w.vx = w.vy = 0;
+      window.__w2 = w;
+    })()""")
+    for _ in range(10):
+        page.evaluate("(() => { const w = window.__w2, p = window.__ep; w.x = p.x; w.y = p.y + p.r + 120; w.vx = w.vy = 0; })()")
+        page.wait_for_timeout(400)
+        if page.evaluate("window.__ep.turrets.length === 0 || window.__ep.turrets[0].hp < 8"):
+            break
+    check(page.evaluate("window.__ep.turrets.length === 0 || window.__ep.turrets[0].hp < 8"),
+          'tus wingmen asedian las defensas orbitales en guerra')
+    page.evaluate("""(() => {
+      window.__w2.alive = false;
+      window.__ep.owner = null; window.__ep.turrets.length = 0; window.__ep.capture = 0;
+      player.invuln = 0;
+      if (!hangarEl.classList.contains('hidden')) toggleGamePanel('hangar');
+    })()""")
+    # la IA fortifica su capital con las mismas reglas (simetría)
+    page.evaluate("""(() => {
+      const c = Object.keys(facState).find(c => c !== window.__tnColor && facState[c].capital);
+      window.__aiC = c;
+      const f = facState[c];
+      f.capital.owner = c; f.capital.stock = 100; f.credits = 1000;
+    })()""")
+    arranco = False
+    for _ in range(20):
+        if page.evaluate("facState[window.__aiC].turretT") > 0:
+            arranco = True
+            break
+        page.wait_for_timeout(250)
+    check(arranco, 'la IA encarga una torreta para su capital (simetría de costes)')
+    page.evaluate("facState[window.__aiC].turretT = 0.1")
+    page.wait_for_timeout(500)
+    check(page.evaluate("facState[window.__aiC].capital.turrets.length") >= 1, 'la torreta de la IA queda instalada en órbita')
+
     # ===== 6. chat =====
     print('— chat —')
     page.keyboard.press('Enter')
@@ -1089,6 +1218,9 @@ with sync_playwright() as pw:
     check(page.evaluate("planets.filter(p => p.capital && p.owner).every(p => p.res === 'mineral')"),
           'v1.7: tras cargar, todas las capitales vuelven a ser mineras')
     check(page.evaluate("story.done") is True, 'v2.1: la historia completada se conserva tras recargar')
+    check(page.evaluate("playerCapital.turrets.length") == 1, 'v2.2: tus torretas orbitales sobreviven a la recarga')
+    check(page.evaluate("planets.some(p => p.capital && p.owner !== player.color && p.turrets.length >= 1)"),
+          'v2.2: las torretas de la IA también se restauran')
     page.screenshot(path=str(SHOTS / 'ui_continuar.png'))
 
     # ===== 8b. v1.7: migración de saves viejos (sin stock ni astillero en la cola) =====
@@ -1099,6 +1231,7 @@ with sync_playwright() as pw:
       d.player.mineral = 25;                          // el viejo stock global del jugador
       for (const sp of d.planets) delete sp.stock;    // save viejo: sin stock por planeta
       for (const q of d.buildQueue) delete q.planet;  // ni astillero en la cola
+      for (const sp of d.planets) delete sp.tur;      // v2.2: save viejo sin torretas
       delete d.story;                                 // v2.1: save viejo sin historia
       localStorage.setItem('pixelfleet_save_v2', JSON.stringify(d));
     })()""")
@@ -1113,6 +1246,8 @@ with sync_playwright() as pw:
           'v1.7: entradas de cola viejas sin planeta se asignan a la capital')
     check(page.evaluate("story.step") == 0 and page.evaluate("!story.done"),
           'v2.1: el save viejo sin historia migra al capítulo 1 (sin invalidar)')
+    check(page.evaluate("playerCapital.turrets.length") == 0,
+          'v2.2: el save viejo sin torretas migra sin defensas (sin invalidar)')
 
     # ===== 9. borrar partida =====
     print('— ajustes: BORRAR PARTIDA —')

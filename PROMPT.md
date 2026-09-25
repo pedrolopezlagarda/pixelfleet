@@ -236,7 +236,22 @@ El roadmap v0.5 quedó completo en v1.2 (A-F + G/H). Nuevas líneas:
       puede mandarte a la quinta ostia»): la sonda del cap 1 a 1200-2500 u de tu
       capital (antes 4000-8000) y el origen del cap 6 a 4000-7000 u (antes
       9000-20000). Solo el clímax te hace viajar un poco más.
-- [ ] **Asedios con defensas orbitales** (siguiente, pedido de Pedro). A futuro:
+- [x] **v2.2 — Asedios con defensas orbitales** (pedido de Pedro; diseño
+      aprobado: torretas individuales destructibles, disciplina
+      guerra/provocación, compra en el hangar, se destruyen al conquistar).
+      Hasta 4 **torretas orbitales** por planeta (8 HP, alcance 420): orbitan
+      FUERA del escudo (reciben daño antes) y **bloquean la conquista** mientras
+      quede alguna viva — asediar = tumbar las defensas primero. Se compran en
+      el hangar (H) con la cola del astillero (**120◈ + 20⛏ · 30 s**, no ocupan
+      hangar), disparan con disciplina (piratas siempre; facciones solo en
+      guerra o provocadas; dañarlas provoca). Wingmen y piloto automático las
+      asedian en guerra; las naves imperiales en guerra disparan primero a las
+      torretas. La IA fortifica su capital (4) y el resto (2) con el mismo
+      coste. Caen con el planeta al conquistarlo. Save v2 guarda el número por
+      planeta (migración sin invalidar). Panel de imperio y etiqueta del
+      planeta muestran 🛰×n. E2E: **271 checks verdes**.
+- [ ] **Asedios con defensas orbitales** ~~(siguiente, pedido de Pedro)~~ →
+      HECHA (v2.2). A futuro:
       tutorial del control RTS, jefes de facción, estaciones comerciales,
       convoys de suministros, más arcos de historia.
 - [x] **v1.6 — Hangar por niveles**: la flota activa ya NO depende de los
