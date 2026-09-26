@@ -267,6 +267,10 @@ El roadmap v0.5 quedó completo en v1.2 (A-F + G/H). Nuevas líneas:
       los wingmen con orden `attack` cerca de un planeta enemigo asedian escudo/
       torretas y luego capturan; los wingmen en `follow` copian el planeta que
       el jugador esté atacando. E2E: 291 checks verdes.
+- [x] **v2.4.1 — Fix: wingmen `follow` al asediar torretas**: `player.attackPlanet`
+      también se setea al impactar una torreta orbital enemiga, no solo al escudo;
+      así los wingmen en `follow` ayudan a destruir las defensas antes de entrar a
+      capturar. E2E: 291 checks verdes.
 - A futuro:
       jefes de facción, estaciones comerciales, convoys de suministros,
       más arcos de historia.

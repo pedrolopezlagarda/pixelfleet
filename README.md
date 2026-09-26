@@ -1,4 +1,4 @@
-# 🚀 PIXEL FLEET — v2.4
+# 🚀 PIXEL FLEET — v2.4.1
 
 Juego de **estrategia espacial** vista cenital, pixel-art, multijugador.
 **Todas las facciones empiezan de cero**: su planeta capital y **una sola nave**,
@@ -73,10 +73,11 @@ disparan a los hostiles en un radio de 420 u.
   que disparar sin parar. La IA en guerra lo aprovecha: concentra fuego hasta
   romper el escudo y, una vez roto, sus naves **entran en la zona de captura**
   en lugar de quedarse orbitando lejos.
-- **Tus naves asedian planetas (v2.4)**: una nave con orden **⚔️ ATACAR** cerca
-  de un planeta enemigo disparará a su escudo (y a sus torretas si las tiene);
+- **Tus naves asedian planetas (v2.4, fix v2.4.1)**: una nave con orden **⚔️ ATACAR**
+  cerca de un planeta enemigo disparará a su escudo (y a sus torretas si las tiene);
   cuando el escudo cae, entrará a capturar. Las naves en **👥 SEGUIRME** copian
-  tu objetivo: si tú disparas a un planeta enemigo, ellas también lo atacan.
+  tu objetivo: si tú disparas al escudo **o a las torretas orbitales** de un
+  planeta enemigo, ellas también lo asedian.
 - **IA simétrica**: las facciones fortifican su capital (hasta 4) y sus otros
   planetas (hasta 2) pagando el mismo coste de su hucha y sus minas; y en guerra
   sus naves **disparan primero a tus torretas** antes que al escudo.
@@ -433,9 +434,10 @@ más arcos de historia.
 
 ---
 
-*v2.4 · ASEDIO PLANETARIO: escudo roto = 60 s sin regenerar, IA entra en zona de
-captura, wingmen atacan planetas enemigos (attack/follow) · TUTORIAL DEL CONTROL
-RTS (v2.3): guía de 11 pasos con foco luminoso y persistencia `tutDone` ·
+*v2.4.1 · ASEDIO PLANETARIO: escudo roto = 60 s sin regenerar, IA entra en zona de
+captura, wingmen atacan planetas enemigos (attack/follow; fix: follow también al
+disparar torretas orbitales) · TUTORIAL DEL CONTROL RTS (v2.3): guía de 11 pasos
+con foco luminoso y persistencia `tutDone` ·
 asedios con defensas orbitales (torretas 8 HP, 120◈+20⛏ desde el hangar),
 disciplina de fuego (solo guerra/provocación/piratas), conquista bloqueada
 mientras queden defensas vivas, wingmen e IA sitiadores, IA que fortifica su

@@ -1172,6 +1172,7 @@ function update(dt) {
               if (dist2(pr.x, pr.y, t.x, t.y) >= 100) continue;   // radio de impacto 10 u
               t.hp -= pr.dmg || 1; t.flash = 0.15; dead = true;
               if (pr.owner === player || (pr.owner && pr.owner.built)) playerAggro[p.owner] = 45;   // dañar defensas provoca
+              if (pr.owner === player) { player.attackPlanet = p; player.attackPlanetT = 8; }   // v2.4.1: wingmen follow asedian este planeta
               if (t.hp <= 0) {
                 p.turrets.splice(p.turrets.indexOf(t), 1);
                 explode(t.x, t.y, p.owner);
