@@ -326,6 +326,43 @@ for (let si = 0; si < suns.length; si++) {
 // v0.8: galaxia virgen — NO hay planetas pre-conquistados. Cada facción
 // empieza de cero (capital + 1 nave) en initFactions() y se expande con su IA.
 
+/* ---------- v2.6 — estaciones comerciales neutrales ----------
+   Puntos fijos de la galaxia para comerciar recursos y reparar.
+   Se generan de forma determinista, lejos de soles, planetas y otras estaciones. */
+const STATION_NAMES = ['Bazar del Cinturón', 'Puerto Estelar Nova', 'Mercado de Lyr', 'Factoría Orion', 'Nexo Cuántico', 'Refugio 7'];
+const STATION_COUNT = 6;
+const STATION_MIN_DIST = 2500;   // separación mínima entre estaciones
+const STATION_MARGIN = 1200;     // margen del borde del mundo
+const stations = [];
+{
+  const rs = mulberry32(20260927);
+  const occupied = [];
+  for (const s of suns) occupied.push({ x: s.x, y: s.y, r: s.r + 900 });
+  for (const p of planets) occupied.push({ x: p.x, y: p.y, r: p.r + 600 });
+  let idx = 0;
+  while (idx < STATION_COUNT) {
+    let x = 0, y = 0, tries = 0, ok = false;
+    while (tries < 60 && !ok) {
+      x = STATION_MARGIN + rs() * (WORLD.w - 2 * STATION_MARGIN);
+      y = STATION_MARGIN + rs() * (WORLD.h - 2 * STATION_MARGIN);
+      ok = !occupied.some(o => dist2(x, y, o.x, o.y) < o.r * o.r) &&
+           !stations.some(s => dist2(x, y, s.x, s.y) < STATION_MIN_DIST * STATION_MIN_DIST);
+      tries++;
+    }
+    if (!ok) { x = STATION_MARGIN + rs() * (WORLD.w - 2 * STATION_MARGIN); y = STATION_MARGIN + rs() * (WORLD.h - 2 * STATION_MARGIN); }
+    stations.push({ x, y, name: STATION_NAMES[idx], r: 14 });
+    idx++;
+  }
+}
+function nearestStation(x, y) {
+  let best = null, bd = Infinity;
+  for (const s of stations) {
+    const d = dist2(x, y, s.x, s.y);
+    if (d < bd) { bd = d; best = s; }
+  }
+  return best ? { s: best, d: Math.sqrt(bd) } : null;
+}
+
 // v2.0: evasión solar de la IA — si la trayectoria (x,y,ang) entra en un sol
 // (margen de 200 u), gira tangente al sol con un sesgo hacia fuera
 function sunAvoid(x, y, ang) {
@@ -1643,6 +1680,12 @@ function update(dt) {
   document.getElementById('mineral').textContent = '⛏ ' + Math.floor(stockOf(player.color, 'mineral'));   // v1.7: suma de tus minas
   document.getElementById('gas').textContent = '⛽ ' + Math.floor(stockOf(player.color, 'gas'));   // v1.7: suma de tus gasolineras
 
+  // v2.6: indicador de estación comercial cercana
+  const tradeHint = document.getElementById('trade-hint');
+  const nearSt = player.alive ? nearestStation(player.x, player.y) : null;
+  const atStation = nearSt && nearSt.d < 280;
+  if (tradeHint) tradeHint.classList.toggle('hidden', !atStation);
+
   // barra de captura
   const capEl = document.getElementById('capbar');
   if (capturing && capturing.faction === player.color) {
@@ -1713,6 +1756,28 @@ function draw() {
       ctx.drawImage(s.sprite, s.x - s.sprite.width / 2, s.y - s.sprite.height / 2);
       ctx.strokeStyle = 'rgba(255,159,90,0.22)'; ctx.lineWidth = 8;
       ctx.beginPath(); ctx.arc(s.x, s.y, s.r + 34, 0, TAU); ctx.stroke();
+    }
+  }
+
+  // v2.6: estaciones comerciales — landmarks visibles siempre (como los soles)
+  for (const s of stations) {
+    if (s.x < vL - 40 || s.x > vR + 40 || s.y < vT - 40 || s.y > vB + 40) continue;
+    if (strat) {
+      ctx.fillStyle = '#8aff80';
+      ctx.fillRect(s.x - 2 / z, s.y - 2 / z, 4 / z, 4 / z);
+      ctx.strokeStyle = '#8aff80'; ctx.lineWidth = 1 / z;
+      ctx.beginPath(); ctx.arc(s.x, s.y, 8 / z, 0, TAU); ctx.stroke();
+    } else {
+      ctx.strokeStyle = '#8aff80'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(s.x - 10, s.y); ctx.lineTo(s.x + 10, s.y);
+      ctx.moveTo(s.x, s.y - 10); ctx.lineTo(s.x, s.y + 10); ctx.stroke();
+      ctx.strokeStyle = 'rgba(138,255,128,0.4)';
+      ctx.beginPath(); ctx.arc(s.x, s.y, 18, 0, TAU); ctx.stroke();
+      if (z >= 0.8 && dist2(s.x, s.y, player.x, player.y) < 900 * 900) {
+        ctx.font = (6 / z) + 'px monospace'; ctx.textAlign = 'center';
+        ctx.fillStyle = '#8aff80';
+        ctx.fillText('🏪 ' + s.name, s.x, s.y - 22 / z);
+      }
     }
   }
 
@@ -1992,6 +2057,9 @@ function drawMinimap() {
   // v2.0: soles siempre visibles en el minimapa (referencia de navegación)
   mctx.fillStyle = '#ffd166';
   for (const s of suns) mctx.fillRect(s.x * k, s.y * k, 2, 2);
+  // v2.6: estaciones comerciales en el minimapa
+  mctx.fillStyle = '#8aff80';
+  for (const s of stations) mctx.fillRect(s.x * k - 1, s.y * k - 1, 2, 2);
   for (const b of bots) if (b.alive && (b.built || fogVisible(b.x, b.y))) {
     if (b.boss) { mctx.fillStyle = '#ffd166'; mctx.fillRect(b.x * k - 1, b.y * k - 1, 3, 3); }
     else if (b.pirateBoss) { mctx.fillStyle = '#cbd5e0'; mctx.fillRect(b.x * k - 1, b.y * k - 1, 3, 3); }
@@ -2474,6 +2542,7 @@ function saveGame() {
       contracts: { offers: contracts.offers, active: contracts.active, seq: contracts.seq },
       story: { step: story.step, prog: story.prog, done: story.done, data: story.data },   // v2.1
       tutDone: tutDone ? 1 : 0,   // v2.3: la guía completada se conserva
+      stations: stations.map(s => ({ x: s.x, y: s.y, name: s.name })),   // v2.6: posiciones deterministas, guardadas por si cambia la seed
     }));
   } catch (e) {}
 }
@@ -2612,6 +2681,13 @@ function applySave(d) {
     contracts.active = d.contracts.active || [];
     contracts.seq = d.contracts.seq || 1;
   }
+  // v2.6: estaciones comerciales (migración transparente: si no están en el
+  // save, se usan las posiciones deterministas generadas al inicio)
+  if (d.stations && d.stations.length) {
+    stations.length = 0;
+    for (const s of d.stations) stations.push({ x: s.x, y: s.y, name: s.name, r: 14 });
+  }
+
   // v2.1: historia. Migración: saves sin `story` no se invalidan — si la
   // preparación ya acabó, la historia arranca en el capítulo 1.
   if (d.story) {
@@ -2646,6 +2722,7 @@ const shopEl = document.getElementById('shop');
 const diploEl = document.getElementById('diplo');
 const empireEl = document.getElementById('empire');        // v0.9 (panel de imperio, TAB)
 const empireBody = document.getElementById('empire-body');
+const tradeEl = document.getElementById('trade');          // v2.6 (panel de comercio)
 let saveAcc = 0;
 function renderShop() {
   document.getElementById('shop-credits').textContent = Math.floor(player.credits);
@@ -2674,6 +2751,76 @@ function renderShop() {
   }).join('');
   shopEl.querySelectorAll('button[data-tech]').forEach(b => b.onclick = () => buyTech(b.dataset.tech));
 }
+/* ---------- v2.6 — comercio ---------- */
+const TRADE_PRICES = {
+  mineral: { buy: 50, sell: 30, unit: 10 },   // compra 10⛏ por 50◈, vende 10⛏ por 30◈
+  gas:     { buy: 60, sell: 40, unit: 10 },
+};
+const TRADE_REPAIR_COST = 5;   // ◈ por cada HP que falte
+let tradeStation = null;       // estación actualmente abierta (para validar proximidad)
+function canTrade() {
+  if (!player.alive) return false;
+  const ns = nearestStation(player.x, player.y);
+  return ns && ns.d < 280;
+}
+function tradeBuy(res) {
+  if (!canTrade()) { chatSys('🏪 Demasiado lejos de la estación comercial.'); return; }
+  const p = TRADE_PRICES[res];
+  if (player.credits < p.buy) { chatSys('◈ No tienes ' + p.buy + '◈ para comprar ' + p.unit + RES_ICON[res] + '.'); return; }
+  const added = addStock(player.color, res, p.unit);
+  if (added <= 0) { chatSys('🏪 No hay espacio de stock para más ' + RES_ICON[res] + '.'); return; }
+  player.credits -= p.buy;
+  chatSys('🏪 Compraste ' + added + RES_ICON[res] + ' por ' + p.buy + '◈.');
+  saveGame(); renderTrade();
+}
+function tradeSell(res) {
+  if (!canTrade()) { chatSys('🏪 Demasiado lejos de la estación comercial.'); return; }
+  const p = TRADE_PRICES[res];
+  if (stockOf(player.color, res) < p.unit) { chatSys('🏪 No tienes ' + p.unit + RES_ICON[res] + ' para vender.'); return; }
+  takeStock(player.color, res, p.unit);
+  player.credits += p.sell;
+  chatSys('🏪 Vendiste ' + p.unit + RES_ICON[res] + ' por ' + p.sell + '◈.');
+  saveGame(); renderTrade();
+}
+function tradeRepair() {
+  if (!canTrade()) { chatSys('🏪 Demasiado lejos de la estación comercial.'); return; }
+  const missing = player.maxHp - Math.ceil(player.hp);
+  if (missing <= 0) { chatSys('🏪 Tu nave no necesita reparación.'); return; }
+  const cost = missing * TRADE_REPAIR_COST;
+  if (player.credits < cost) { chatSys('◈ Necesitas ' + cost + '◈ para reparar ' + missing + ' HP.'); return; }
+  player.credits -= cost;
+  player.hp = player.maxHp;
+  chatSys('🏪 Nave reparada por ' + cost + '◈.');
+  saveGame(); renderTrade();
+}
+function renderTrade() {
+  const ns = player.alive ? nearestStation(player.x, player.y) : null;
+  tradeStation = ns && ns.d < 280 ? ns.s : null;
+  document.getElementById('trade-station').textContent = tradeStation ? tradeStation.name : '—';
+  document.getElementById('trade-credits').textContent = Math.floor(player.credits);
+  const ok = !!tradeStation;
+  const ore = Math.floor(stockOf(player.color, 'mineral'));
+  const gas = Math.floor(stockOf(player.color, 'gas'));
+  const missing = Math.max(0, Math.ceil(player.maxHp - player.hp));
+  document.getElementById('trade-body').innerHTML =
+    '<div class="trade-row"><div><b>⛏ Mineral</b><span> · tienes ' + ore + '</span></div>' +
+    '<div><button data-trade="buy-ore" ' + (ok && player.credits >= TRADE_PRICES.mineral.buy ? '' : 'disabled') + '>Comprar 10 · ' + TRADE_PRICES.mineral.buy + '◈</button>' +
+    '<button data-trade="sell-ore" ' + (ok && ore >= TRADE_PRICES.mineral.unit ? '' : 'disabled') + '>Vender 10 · ' + TRADE_PRICES.mineral.sell + '◈</button></div></div>' +
+    '<div class="trade-row"><div><b>⛽ Gas</b><span> · tienes ' + gas + '</span></div>' +
+    '<div><button data-trade="buy-gas" ' + (ok && player.credits >= TRADE_PRICES.gas.buy ? '' : 'disabled') + '>Comprar 10 · ' + TRADE_PRICES.gas.buy + '◈</button>' +
+    '<button data-trade="sell-gas" ' + (ok && gas >= TRADE_PRICES.gas.unit ? '' : 'disabled') + '>Vender 10 · ' + TRADE_PRICES.gas.sell + '◈</button></div></div>' +
+    '<div class="trade-row trade-repair"><div><b>🔧 Reparar nave</b><span> · falta ' + missing + ' HP · ' + (missing * TRADE_REPAIR_COST) + '◈</span></div>' +
+    '<button data-trade="repair" ' + (ok && missing > 0 && player.credits >= missing * TRADE_REPAIR_COST ? '' : 'disabled') + '>REPARAR</button></div>';
+  tradeEl.querySelectorAll('button[data-trade]').forEach(btn => btn.onclick = () => {
+    const a = btn.dataset.trade;
+    if (a === 'buy-ore') tradeBuy('mineral');
+    else if (a === 'sell-ore') tradeSell('mineral');
+    else if (a === 'buy-gas') tradeBuy('gas');
+    else if (a === 'sell-gas') tradeSell('gas');
+    else if (a === 'repair') tradeRepair();
+  });
+}
+
 function renderDiplo() {
   document.getElementById('diplo-list').innerHTML = FACTION_COLORS
     .filter(c => c !== player.color)
@@ -2705,6 +2852,7 @@ addEventListener('keydown', e => {
   const k = e.key.toLowerCase();
   if (k === 'b') { toggleGamePanel('shop'); }
   if (k === 'f') { toggleGamePanel('diplo'); }
+  if (k === 'e') { toggleGamePanel('trade'); }   // v2.6: comercio
   if (k === 'escape') closeAllPanels();
 });
 
@@ -3955,7 +4103,7 @@ tutorialUpdate = function (dt) {
    tooltip). Los atajos de teclado siguen funcionando.
    ========================================================= */
 function toggleGamePanel(which) {
-  const map = { shop: shopEl, diplo: diploEl, contracts: contractsEl, missions: missionsEl, hangar: hangarEl, empire: empireEl };
+  const map = { shop: shopEl, diplo: diploEl, contracts: contractsEl, missions: missionsEl, hangar: hangarEl, empire: empireEl, trade: tradeEl };
   for (const k in map) if (k !== which) map[k].classList.add('hidden');
   map[which].classList.toggle('hidden');
   if (which === 'shop') renderShop();
@@ -3964,9 +4112,10 @@ function toggleGamePanel(which) {
   else if (which === 'missions') renderMissions();
   else if (which === 'hangar') renderHangar();
   else if (which === 'empire') renderEmpire();
+  else if (which === 'trade') renderTrade();
 }
 function closeAllPanels() {
-  for (const el of [shopEl, diploEl, contractsEl, missionsEl, hangarEl, empireEl]) el.classList.add('hidden');
+  for (const el of [shopEl, diploEl, contractsEl, missionsEl, hangarEl, empireEl, tradeEl]) el.classList.add('hidden');
 }
 // v1.6.1: botón ✕ para cerrar cada panel (además de su tecla y ESC)
 document.querySelectorAll('.panel-x').forEach(b => b.onclick = () => b.parentElement.classList.add('hidden'));
@@ -3976,7 +4125,7 @@ const tbChat = document.getElementById('tb-chat');
 if (tbChat) tbChat.onclick = () => { chatInput.style.display = 'block'; chatInput.focus(); };
 const tbMenu = document.getElementById('tb-menu');
 if (tbMenu) tbMenu.onclick = () => { if (inGame) backToMenu(); };
-const tbPairs = tbButtons.map(b => [b, { shop: shopEl, diplo: diploEl, contracts: contractsEl, missions: missionsEl, hangar: hangarEl, empire: empireEl }[b.dataset.panel]]);
+const tbPairs = tbButtons.map(b => [b, { shop: shopEl, diplo: diploEl, contracts: contractsEl, missions: missionsEl, hangar: hangarEl, empire: empireEl, trade: tradeEl }[b.dataset.panel]]);
 
 // resaltar el icono del panel que esté abierto (también si se abre con teclado)
 const _update53 = update;

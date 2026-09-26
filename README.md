@@ -1,4 +1,4 @@
-# 🚀 PIXEL FLEET — v2.5
+# 🚀 PIXEL FLEET — v2.6
 
 Juego de **estrategia espacial** vista cenital, pixel-art, multijugador.
 **Todas las facciones empiezan de cero**: su planeta capital y **una sola nave**,
@@ -40,6 +40,7 @@ muestra el atajo de teclado). No hace falta memorizar nada.
 | **Panel de flota** (derecha) | Lista de tus naves: clic selecciona, botones de orden; tu nave obedece en 🤖 automático (v2.0) |
 | **ESPACIO** | Impulso (gasta combustible) |
 | **B** | Tienda de mejoras |
+| **E** | Comercio (cerca de una estación espacial) |
 | **F** | Panel de diplomacia |
 | **C** | Contratos |
 | **J** | Misiones-historia (cadena de capítulos) |
@@ -100,6 +101,14 @@ al 25 % HP) o **salto corto**.
   (24 HP, 250◈ de recompensa).
 - El panel de imperio (TAB) muestra el estado de cada jefe: 👑 activo, 💀 caído
   con tiempo de debuff o sin jefe. Todo se guarda en la partida.
+
+### 🏪 Estaciones comerciales (v2.6)
+La galaxia contiene **estaciones espaciales neutrales** (🏪 visibles siempre en el mapa y en el minimapa). Acércate con tu nave (< 280 u) para abrir el panel de **comercio** con la tecla **E** o el icono de la barra lateral.
+
+- **Compra/venta de recursos**: cambia ◈ por ⛏ mineral y ⛽ gas (y viceversa) en lotes de 10.
+- **Reparación de tu nave**: paga ◈ para restaurar toda tu HP sin necesidad de un planeta propio.
+- Las estaciones no pertenecen a ninguna facción: comprar o vender no afecta a la diplomacia.
+- Son **landmarks**: las ves aunque estén en la niebla de guerra, lo que las convierte en puntos de referencia para navegar.
 
 ### 🔔 Notificaciones y menús cómodos (v1.6.1)
 - **Avisos en pantalla** (arriba, grandes): te disparan, atacan un planeta tuyo,
@@ -434,7 +443,7 @@ Posiciones a 10 Hz, disparos y chat retransmitidos **por sala**.
 | `style.css` | Estilo retro pixelado |
 | `game.js` | Motor completo + sistemas v0.3/v0.4/v0.5/v0.6 |
 | `server.js` | Servidor WebSocket multijugador con salas |
-| `tools/verify_ui.py` | Test E2E real (Playwright): 299 checks — menús, clics, tienda/tecnología, flota, hangar (60 niveles), notificaciones, RTS, panel de flota, facciones IA, niebla, economía, eventos, victoria, persistencia, zoom, suministros (v1.7), sistemas solares y daño/evasión solar (v2.0), misiones-historia (v2.1, objetivos cercanos v2.1.2), fuego disciplinado de wingmen (v2.1.1), asedios con torretas orbitales (v2.2), tutorial del control RTS (v2.3), asedio planetario con ventana de conquista y wingmen sitiadores (v2.4), jefes de facción y capitán pirata (v2.5) |
+| `tools/verify_ui.py` | Test E2E real (Playwright): 299+ checks — menús, clics, tienda/tecnología, flota, hangar (60 niveles), notificaciones, RTS, panel de flota, facciones IA, niebla, economía, eventos, victoria, persistencia, zoom, suministros (v1.7), sistemas solares y daño/evasión solar (v2.0), misiones-historia (v2.1, objetivos cercanos v2.1.2), fuego disciplinado de wingmen (v2.1.1), asedios con torretas orbitales (v2.2), tutorial del control RTS (v2.3), asedio planetario con ventana de conquista y wingmen sitiadores (v2.4), jefes de facción y capitán pirata (v2.5), estaciones comerciales (v2.6) |
 | `README.md` | Este documento |
 
 ### Tests E2E
@@ -446,23 +455,25 @@ PYTHONIOENCODING=utf-8 ../.venv/Scripts/python tools/verify_ui.py   # desde app/
 
 ## Próximas ideas
 
-Estaciones espaciales comerciales · convoys de suministros · más arcos de historia.
+Convoys de suministros · más arcos de historia.
 
 ---
 
-*v2.5 · JEFES DE FACCIÓN: jefe único por facción IA (40 HP, habilidad especial,
-recompensa 500◈+100⛏+100⛽, debuff de líder caído), capitán pirata, estado en
-panel de imperio · ASEDIO PLANETARIO: escudo roto = 60 s sin regenerar, IA entra
-en zona de captura, wingmen atacan planetas enemigos (attack/follow; fix: follow
-también al disparar torretas orbitales) · TUTORIAL DEL CONTROL RTS (v2.3): guía
-de 11 pasos con foco luminoso y persistencia `tutDone` · asedios con defensas
-orbitales (torretas 8 HP, 120◈+20⛏ desde el hangar), disciplina de fuego (solo
-guerra/provocación/piratas), conquista bloqueada mientras queden defensas vivas,
-wingmen e IA sitiadores, IA que fortifica su capital · misiones-historia «La
-señal del Vacío» (6 capítulos, Mapa del Vacío) · galaxia de 12 sistemas solares
-(24000², daño solar, evasión IA) · hangar masivo de 60 niveles (también la IA) ·
-panel de flota permanente con órdenes · suministros por planeta · niebla de
-guerra*
+*v2.6 · ESTACIONES COMERCIALES: 6 estaciones espaciales neutrales para comprar/
+vender ⛏/⛽ y reparar tu nave, acceso con E o icono de toolbar, visibles como
+landmarks en mapa y minimapa · v2.5 · JEFES DE FACCIÓN: jefe único por facción
+IA (40 HP, habilidad especial, recompensa 500◈+100⛏+100⛽, debuff de líder
+caído), capitán pirata, estado en panel de imperio · ASEDIO PLANETARIO: escudo
+roto = 60 s sin regenerar, IA entra en zona de captura, wingmen atacan planetas
+enemigos (attack/follow; fix: follow también al disparar torretas orbitales) ·
+TUTORIAL DEL CONTROL RTS (v2.3): guía de 11 pasos con foco luminoso y
+persistencia `tutDone` · asedios con defensas orbitales (torretas 8 HP,
+120◈+20⛏ desde el hangar), disciplina de fuego (solo guerra/provocación/
+piratas), conquista bloqueada mientras queden defensas vivas, wingmen e IA
+sitiadores, IA que fortifica su capital · misiones-historia «La señal del
+Vacío» (6 capítulos, Mapa del Vacío) · galaxia de 12 sistemas solares (24000²,
+daño solar, evasión IA) · hangar masivo de 60 niveles (también la IA) · panel
+de flota permanente con órdenes · suministros por planeta · niebla de guerra*
 
 > ⚠️ El save (`pixelfleet_save_v2`) no es compatible con partidas de mundos
 > anteriores (8000/12000): al entrar empezarás una partida nueva en la galaxia

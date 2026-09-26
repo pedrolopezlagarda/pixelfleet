@@ -1,10 +1,10 @@
-# PIXEL FLEET — Prompt de continuación (v0.5 “Estrategia real”)
+# PIXEL FLEET — Prompt de continuación (v2.6)
 
 Estado actual: juego web pixel-art vista cenital multijugador (archivos: `index.html`,
 `style.css`, `game.js`, `server.js`, `README.md`). Tiene: movimiento, disparos, bots,
 conquista de planetas con escudos, economía, tienda, hangar, diplomacia, contratos,
-chat, minimapa, salas por código y persistencia en localStorage. El motor está en
-`game.js` (vanilla JS + canvas, sin frameworks).
+chat, minimapa, salas por código, persistencia en localStorage y **estaciones
+comerciales neutrales**. El motor está en `game.js` (vanilla JS + canvas, sin frameworks).
 
 ## PROBLEMA DE DISEÑO DETECTADO
 El juego es demasiado rápido: parece un arena de disparos. Se quiere un juego de
@@ -280,8 +280,13 @@ El roadmap v0.5 quedó completo en v1.2 (A-F + G/H). Nuevas líneas:
       (ingresos ×0,7, sin declarar guerras durante 90 s). **Capitán pirata**
       en oleadas pirata (35 %, 24 HP, 250◈). Panel de imperio muestra el estado
       de cada jefe. Persistente en save v2. E2E: **299 checks verdes**.
+- [x] **v2.6 — Estaciones comerciales**: 6 estaciones espaciales **neutrales**
+      generadas por seed (landmarks visibles siempre en mapa y minimapa).
+      Acércate (< 280 u) para comprar/vender ⛏ y ⛽ a cambio de ◈ y reparar tu
+      nave. Acceso con tecla **E** o icono 🏪 de la barra lateral. No afectan a
+      la diplomacia. Persistencia en save v2 (migración transparente).
 - A futuro:
-      estaciones comerciales, convoys de suministros, más arcos de historia.
+      convoys de suministros, más arcos de historia.
 - [x] **v1.6 — Hangar por niveles**: la flota activa ya NO depende de los
       planetas conquistados. El hangar tiene 5 ampliaciones comprables
       (150/300/450/600/750◈): cada nivel da **+2 flota activa y +2 almacén**

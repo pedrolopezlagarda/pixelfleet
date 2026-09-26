@@ -327,3 +327,25 @@ body.tut-rts #fleet-panel, body.tut-rts #fleet-menu { z-index: 14; }
 .mchap { font-size: 11px; color: #8fa8d0; padding: 3px 6px; border-left: 2px solid #1a2a4a; }
 .mchap.now { color: #ffd166; border-left-color: #ffd166; }
 .mchap .mrew { color: #7ef9ff; float: right; }
+
+/* ===== v2.6 — indicador de estación comercial cercana ===== */
+#trade-hint { position: fixed; top: 120px; left: 14px; z-index: 6;
+  background: rgba(11,16,48,.9); border: 2px solid #8aff80; padding: 5px 12px;
+  font-size: 12px; color: #8aff80; letter-spacing: 1px; text-shadow: 1px 1px 0 #000;
+  pointer-events: none; }
+#trade-hint b { color: #ffd166; }
+
+/* ===== v2.6 — panel de comercio ===== */
+#trade .trade-row { display: flex; justify-content: space-between; align-items: center;
+  padding: 8px 4px; border-bottom: 1px solid #1a2a4a; font-size: 12px; }
+#trade .trade-row b { color: #e8f0ff; }
+#trade .trade-row span { color: #8fa8d0; font-size: 11px; }
+#trade .trade-row button { font-family: inherit; font-size: 11px; padding: 4px 10px;
+  background: #101a33; color: #7ef9ff; border: 2px solid #7ef9ff; cursor: pointer; }
+#trade .trade-row button:hover { background: #7ef9ff; color: #05060e; }
+#trade .trade-row button:disabled { opacity: .3; cursor: default; }
+#trade .trade-row button:disabled:hover { background: #101a33; color: #7ef9ff; }
+#trade .trade-repair { margin-top: 10px; padding-top: 8px; border-top: 2px solid #1a2a4a; }
+#trade .trade-repair button { background: #101a33; color: #8aff80; border-color: #8aff80; }
+#trade .trade-repair button:hover { background: #8aff80; color: #05060e; }
+#trade .trade-repair button:disabled:hover { background: #101a33; color: #8aff80; }

@@ -830,6 +830,47 @@ with sync_playwright() as pw:
     page.keyboard.press('Escape')
     page.wait_for_timeout(150)
 
+    # ===== 5d2. v2.6: estaciones comerciales =====
+    print('— v2.6: estaciones comerciales —')
+    check(page.evaluate("stations.length") == 6, 'hay 6 estaciones comerciales en la galaxia')
+    page.evaluate("""(() => {
+      const s = stations[0];
+      player.x = s.x + 200; player.y = s.y;
+      cam.x = player.x; cam.y = player.y;
+    })()""")
+    page.wait_for_timeout(400)
+    check(page.locator('#trade-hint').is_visible(), 'indicador COMERCIO visible cerca de una estación')
+    page.keyboard.press('e')
+    page.wait_for_timeout(300)
+    check(page.locator('#trade').is_visible(), 'tecla E abre el panel de comercio')
+    # comprar 10⛏ (la capital sigue produciendo, así que comprobamos cambio, no exactitud)
+    creds_before = page.evaluate("Math.floor(player.credits)")
+    ore_before = page.evaluate("Math.floor(stockOf(player.color, 'mineral'))")
+    page.click('#trade button[data-trade="buy-ore"]')
+    page.wait_for_timeout(200)
+    check(page.evaluate("Math.floor(player.credits)") <= creds_before - 45, 'comprar 10⛏ cuesta ~50◈')
+    check(page.evaluate("Math.floor(stockOf(player.color, 'mineral'))") == ore_before + 10, 'comprar 10⛏ suma al stock')
+    # vender 10⛏
+    creds_before = page.evaluate("Math.floor(player.credits)")
+    ore_before = page.evaluate("Math.floor(stockOf(player.color, 'mineral'))")
+    page.click('#trade button[data-trade="sell-ore"]')
+    page.wait_for_timeout(200)
+    check(page.evaluate("Math.floor(player.credits)") >= creds_before + 25, 'vender 10⛏ da ~30◈')
+    check(page.evaluate("Math.floor(stockOf(player.color, 'mineral'))") == ore_before - 10, 'vender 10⛏ resta del stock')
+    # reparar: dañar la nave primero (el panel sigue abierto)
+    page.evaluate("player.hp = 5")
+    page.wait_for_timeout(200)
+    page.evaluate("renderTrade()")   # refrescar estado del botón tras dañar la nave
+    missing = page.evaluate("Math.ceil(player.maxHp - player.hp)")
+    cost = missing * 5
+    creds_before = page.evaluate("Math.floor(player.credits)")
+    page.click('#trade button[data-trade="repair"]')
+    page.wait_for_timeout(200)
+    check(page.evaluate("player.hp") == page.evaluate("player.maxHp"), 'reparar restaura todo el HP')
+    check(page.evaluate("Math.floor(player.credits)") <= creds_before - cost + 5, 'reparar cuesta ~5◈ por HP')
+    page.keyboard.press('Escape')
+    page.wait_for_timeout(150)
+
     # ===== 5d2. v1.3: personalidades + eventos galácticos =====
     print('— v1.3: personalidades y eventos —')
     check(page.evaluate("FACTION_COLORS.filter(c => c !== player.color).every(c => !!PERSONALITIES[facState[c].personality])"),

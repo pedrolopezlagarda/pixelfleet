@@ -112,6 +112,9 @@
     <!-- Tracker de la misión-historia activa (v2.1) -->
     <div id="mission-tracker" class="hidden"></div>
 
+    <!-- Indicador de estación comercial cercana (v2.6) -->
+    <div id="trade-hint" class="hidden">🏪 COMERCIO disponible · pulsa <b>E</b></div>
+
     <!-- Banner de fase de preparación (v0.5) -->
     <div id="prep-banner" class="hidden"></div>
 
@@ -126,6 +129,7 @@
       <button data-panel="diplo"     title="🤝 Diplomacia  [F]">🤝</button>
       <button data-panel="contracts" title="📋 Contratos  [C]">📋</button>
       <button data-panel="missions"  title="📜 Misiones-historia  [J]">📜</button>
+      <button data-panel="trade"     title="🏪 Comercio  [E]">🏪</button>
       <button id="tb-chat"           title="💬 Chat  [ENTER]">💬</button>
       <button id="tb-menu"           title="🏠 Volver al menú  [M]">🏠</button>
     </div>
@@ -170,6 +174,15 @@
       <h3>📜 MISIONES</h3>
       <div id="missions-body"></div>
       <p class="panel-hint">Pulsa <b>J</b> para cerrar</p>
+    </div>
+
+    <!-- Comercio (tecla E) — v2.6: estaciones espaciales neutrales -->
+    <div id="trade" class="game-panel hidden">
+      <button class="panel-x" title="Cerrar">✕</button>
+      <h3>🏪 COMERCIO</h3>
+      <p class="panel-sub"><span id="trade-station">—</span> · Créditos: <span id="trade-credits">0</span> ◈</p>
+      <div id="trade-body"></div>
+      <p class="panel-hint">Pulsa <b>E</b> para cerrar · solo cerca de una estación</p>
     </div>
 
     <!-- Hangar (tecla H) — v0.6: construir / flota activa / hangar · v1.6: nivel ampliable -->
