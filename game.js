@@ -114,6 +114,16 @@ const SHIP_SPRITES = {
     '....#...',
     '....#...',
   ],
+  jefe: [   // v2.5: nave de jefe de facción — mole alargada con quilla
+    '........',
+    '...#....',
+    '..###...',
+    '.#####..',
+    '#######.',
+    '.#####..',
+    '..###...',
+    '...#....',
+  ],
 };
 function makeShipSprite(color, type) {
   const spr = SHIP_SPRITES[type] || SHIP_SPRITES.caza;
@@ -229,6 +239,20 @@ function takeStock(color, res, n) {
   }
   return true;
 }
+// v2.5: añade stock de un recurso repartiéndolo entre los planetas propios del tipo (del más vacío al más lleno)
+function addStock(color, res, n) {
+  let left = n;
+  const mine = planetsWithStock(color, res).sort((a, b) => (a.stock || 0) - (b.stock || 0));
+  if (!mine.length) return 0;
+  for (const p of mine) {
+    const room = STOCK_CAP - (p.stock || 0);
+    const add = Math.min(room, left);
+    p.stock = (p.stock || 0) + add;
+    left -= add;
+    if (left <= 0) break;
+  }
+  return n - left;
+}
 /* ---------- v2.0: sistemas solares ----------
    12 soles, cada uno con 4-6 planetas en órbitas (sun.r + 450 + k·480).
    Todo determinista (misma seed): los soles NO se guardan en el save —
@@ -343,6 +367,31 @@ const facState = {};   // color -> { capital, credits, rel:{color->num}, warT:{}
 const FAC_SHIP_COST = 60, FAC_SHIP_TIME = 20, FAC_SHIP_ORE = 15;   // v1.7: la IA también paga ⛏ por nave
 const playerAggro = {};   // color -> s restantes de "provocada por el jugador" (wingmen pueden responder)
 
+/* ---------- v2.5 — JEFES DE FACCIÓN ---------- */
+const BOSS_NAMES = {
+  '#7ef9ff': ['Almirante Thalassa', 'Comandante Cyanis'],
+  '#ffd166': ['Primarca Aurum', 'General Solarius'],
+  '#ff6b8a': ['Señora Carmesí', 'Alta Inquisidora Vex'],
+  '#8aff80': ['Voz Verde', 'Custodio Bosque'],
+  '#c792ff': ['Arconte Violeta', 'Oráculo Nebulon'],
+  '#ff9f5a': ['Khan Ámbar', 'Matriarca Ignis'],
+};
+const BOSS_HP = 40;
+const BOSS_SIZE = 6;            // sprite ×1,5 respecto a nave normal
+const BOSS_SPEED = 22;
+const BOSS_REWARD_CREDITS = 500, BOSS_REWARD_ORE = 100, BOSS_REWARD_GAS = 100;
+const BOSS_DEBUFF_TIME = 90;    // segundos de "líder caído"
+const BOSS_SPAWN_PLANETS = 3;   // mínimo de planetas de la facción para aparecer
+const BOSS_SPAWN_DELAY = 180;   // segundos de partida antes de que pueda aparecer
+const BOSS_CALL_CD = 25;        // cooldown de llamada de refuerzos
+const BOSS_PULSE_CD = 18;       // cooldown de escudo de pulsos
+const BOSS_JUMP_CD = 14;        // cooldown de salto corto
+const BOSS_COLORS = ['#7ef9ff', '#ffd166', '#ff6b8a', '#8aff80', '#c792ff', '#ff9f5a'];
+const BOSS_SKILL = ['reinforcements', 'pulse', 'jump', 'reinforcements', 'pulse', 'jump']; // por índice de color
+const PIRATE_BOSS_HP = 24;
+const PIRATE_BOSS_REWARD = 250;
+const PIRATE_BOSS_NAMES = ['Barba Negra del Vacío', 'Capitán Calavera', 'Señor de la Niebla', 'Reina Saqueadora'];
+
 /* =========================================================
    v2.0 — GRID ESPACIAL Y CACHES POR FRAME
    Con flotas de 300+ naves los scans O(n²) se comen el frame.
@@ -456,7 +505,7 @@ function initFactions() {
     cap.owner = c; cap.capital = true; cap.shieldMax = 100; cap.shield = 100; cap.shieldRegenCd = 0;
     cap.name = 'CAPITAL ' + facName(c);
     cap.res = 'mineral'; cap.stock = CAP_START_STOCK;   // v1.7: capital minera también para la IA
-    facState[c] = { capital: cap, credits: 20, rel: {}, warT: {}, aiT: rnd(2, 6), buildT: 0, building: false, personality: null, hangarLvl: 0, turretT: 0, turretPlanet: null };   // v2.0: hangarLvl · v2.2: obra de torreta en curso
+    facState[c] = { capital: cap, credits: 20, rel: {}, warT: {}, aiT: rnd(2, 6), buildT: 0, building: false, personality: null, hangarLvl: 0, turretT: 0, turretPlanet: null, boss: null, bossAlive: false, bossDeadT: 0, incomeMul: 1 };   // v2.0: hangarLvl · v2.2: torreta · v2.5: jefe
     for (const o of FACTION_COLORS) if (o !== c) facState[c].rel[o] = 0;
     spawnFactionShip(c);
   }
@@ -678,6 +727,182 @@ function facShipThink(b, dt) {
   b.shootCd = 0.4;
 }
 
+/* ---------- v2.5 — JEFES DE FACCIÓN ---------- */
+function spawnBoss(c) {
+  const fac = facState[c];
+  if (!fac || fac.bossAlive || fac.dead) return null;
+  const home = fac.capital || planets.find(p => p.owner === c);
+  if (!home) return null;
+  const names = BOSS_NAMES[c] || ['Comandante'];
+  const b = {
+    name: names[rndi(0, names.length - 1)],
+    color: c, x: home.x + rnd(-200, 200), y: home.y + rnd(-200, 200),
+    angle: rnd(0, TAU), speed: BOSS_SPEED, waypoint: null,
+    hp: BOSS_HP, maxHp: BOSS_HP, alive: true,
+    shootCd: rnd(0.5, 1.5), credits: 0, kills: 0,
+    vx: 0, vy: 0, flash: 0,
+    home, expandR: 2000,
+    imp: true, boss: true, skill: BOSS_SKILL[BOSS_COLORS.indexOf(c) % BOSS_SKILL.length],
+    callCd: BOSS_CALL_CD, pulseT: 0, jumpCd: BOSS_JUMP_CD,
+  };
+  b.x = clamp(b.x, 20, WORLD.w - 20); b.y = clamp(b.y, 20, WORLD.h - 20);
+  bots.push(b);
+  fac.boss = b; fac.bossAlive = true; fac.bossDeadT = 0;
+  // 2 escoltas
+  for (let i = 0; i < 2; i++) {
+    const e = spawnFactionShip(c);
+    if (e) { e.x = b.x + rnd(-80, 80); e.y = b.y + rnd(-80, 80); e.guard = b; }
+  }
+  chatSys('👑 ¡' + b.name + ' (' + facName(c) + ') ha entrado en la galaxia!');
+  notify('👑 Jefe de facción detectado: ' + b.name, 'danger', 'boss-' + c, 10);
+  return b;
+}
+function despawnBoss(c) {
+  const fac = facState[c];
+  if (!fac || !fac.boss) return;
+  const b = fac.boss;
+  if (b.alive) { b.alive = false; b.gone = true; }
+  fac.boss = null; fac.bossAlive = false;
+}
+function bossCanSpawn(c) {
+  const fac = facState[c];
+  if (!fac || fac.dead || fac.bossAlive || prepT > 0) return false;   // v2.5: no aparecen durante la preparación
+  if ((gameTime || 0) < BOSS_SPAWN_DELAY) return false;
+  return planets.filter(p => p.owner === c).length >= BOSS_SPAWN_PLANETS;
+}
+function bossThink(b, dt) {
+  b.flash = Math.max(0, b.flash - dt);
+  b.shootCd -= dt;
+  b.callCd -= dt;
+  b.jumpCd -= dt;
+  if (b.pulseT > 0) b.pulseT -= dt;
+  const fac = facState[b.color];
+  if (!fac) return;
+  const warPlayer = (standings[b.color] || 0) <= -30;
+  const capital = fac.capital;
+
+  // ¿capital propia bajo ataque? (enemigos a <1200 u o escudo bajo)
+  let defending = false;
+  if (capital && capital.owner === b.color) {
+    const lowShield = capital.shield < capital.shieldMax * 0.9;
+    let enemyNear = false;
+    gridEach(capital.x, capital.y, 1200, o => {
+      if (!o.alive || o.color === b.color || o.pirate) return false;
+      if (o.built && warPlayer) { enemyNear = true; return true; }
+      if (o.imp && o.color !== b.color && atWarFF(b.color, o.color)) { enemyNear = true; return true; }
+      return false;
+    });
+    defending = lowShield || enemyNear;
+  }
+
+  // elegir objetivo
+  let tx = null, ty = null, mode = 'patrol';
+  if (defending && capital) {
+    mode = 'defend';
+    if (!b.waypoint || dist2(b.x, b.y, b.waypoint.x, b.waypoint.y) < 900)
+      b.waypoint = { x: clamp(capital.x + rnd(-600, 600), 20, WORLD.w - 20),
+                     y: clamp(capital.y + rnd(-600, 600), 20, WORLD.h - 20) };
+    tx = b.waypoint.x; ty = b.waypoint.y;
+  } else if (warPlayer && player.alive) {
+    mode = 'hunt';
+    tx = player.x; ty = player.y;
+    // si el jugador está lejos, a veces ataca su capital
+    if (playerCapital && dist2(b.x, b.y, player.x, player.y) > 4000 * 4000 && Math.random() < 0.3) {
+      tx = playerCapital.x; ty = playerCapital.y;
+    }
+  } else {
+    // guerra fac-fac: atacar planeta/nave enemiga cercano
+    let target = null, td = Infinity;
+    for (const p of planets) {
+      if (!p.owner || p.owner === b.color) continue;
+      if (!atWarFF(b.color, p.owner)) continue;
+      const d = dist2(b.x, b.y, p.x, p.y);
+      if (d < td) { td = d; target = p; }
+    }
+    if (target && td < 6000 * 6000) { mode = 'attack'; tx = target.x; ty = target.y; }
+    else {
+      // patrulla entre planetas propios
+      mode = 'patrol';
+      const owned = planets.filter(p => p.owner === b.color);
+      if (owned.length) {
+        if (b.patrolIdx == null || !b.waypoint || dist2(b.x, b.y, b.waypoint.x, b.waypoint.y) < 900) {
+          b.patrolIdx = rndi(0, owned.length - 1);
+          const p = owned[b.patrolIdx];
+          b.waypoint = { x: clamp(p.x + rnd(-500, 500), 20, WORLD.w - 20),
+                         y: clamp(p.y + rnd(-500, 500), 20, WORLD.h - 20) };
+        }
+        tx = b.waypoint.x; ty = b.waypoint.y;
+      }
+    }
+  }
+
+  // salto corto: si objetivo lejano y cd listo
+  if (b.skill === 'jump' && b.jumpCd <= 0 && tx != null && dist2(b.x, b.y, tx, ty) > 3500 * 3500) {
+    const ang = Math.atan2(ty - b.y, tx - b.x);
+    b.x = clamp(b.x + Math.cos(ang) * 2000, 20, WORLD.w - 20);
+    b.y = clamp(b.y + Math.sin(ang) * 2000, 20, WORLD.h - 20);
+    b.jumpCd = BOSS_JUMP_CD;
+    explode(b.x, b.y, b.color);
+  }
+
+  // movimiento
+  if (tx != null) {
+    const wa = sunAvoid(b.x, b.y, Math.atan2(ty - b.y, tx - b.x));
+    b.angle = angleLerp(b.angle, wa, 1 - Math.pow(0.05, dt));
+    b.thrustLvl = dist2(b.x, b.y, tx, ty) > 40 * 40 ? 1 : 0;
+    if (b.thrustLvl) {
+      b.x = clamp(b.x + Math.cos(b.angle) * b.speed * dt, 20, WORLD.w - 20);
+      b.y = clamp(b.y + Math.sin(b.angle) * b.speed * dt, 20, WORLD.h - 20);
+    }
+  } else b.thrustLvl = 0;
+
+  // escudo de pulsos (invulnerabilidad breve bajo 25 % HP)
+  if (b.skill === 'pulse' && b.hp <= b.maxHp * 0.25 && b.pulseT <= 0 && !b.pulseUsed) {
+    b.pulseT = 3; b.pulseUsed = true;
+    notify('🛡️ ' + b.name + ' activa escudo de pulsos.', 'info', 'boss-pulse-' + b.color, 6);
+  }
+
+  // llamada de refuerzos
+  if (b.skill === 'reinforcements' && b.callCd <= 0) {
+    b.callCd = BOSS_CALL_CD;
+    const cap = 5 + 5 * (fac.hangarLvl || 0);
+    const ships = bots.filter(o => o.imp && o.alive && o.color === b.color).length;
+    for (let i = 0; i < 2 && ships + i < cap; i++) {
+      const e = spawnFactionShip(b.color);
+      if (e) { e.x = b.x + rnd(-120, 120); e.y = b.y + rnd(-120, 120); e.guard = b; }
+    }
+    chatSys('📢 ' + b.name + ' llama refuerzos a su posición.');
+  }
+
+  // fuego: buscar el objetivo más cercano permitido
+  if (b.shootCd <= 0 && prepT <= 0) {
+    let tgt = null, td = 520 * 520;
+    if (warPlayer && player.alive) {
+      const d = dist2(b.x, b.y, player.x, player.y);
+      if (d < td) { td = d; tgt = player; }
+    }
+    gridEach(b.x, b.y, 520, o => {
+      if (!o.alive || o.color === b.color || o === b || o.pirate) return false;
+      if (o.built) {
+        if (!warPlayer) return false;
+        const d = dist2(b.x, b.y, o.x, o.y);
+        if (d < td) { td = d; tgt = o; }
+        return false;
+      }
+      if (o.imp && atWarFF(b.color, o.color)) {
+        const d = dist2(b.x, b.y, o.x, o.y);
+        if (d < td) { td = d; tgt = o; }
+      }
+      return false;
+    });
+    if (tgt) {
+      const a = Math.atan2(tgt.y - b.y, tgt.x - b.x) + rnd(-0.08, 0.08);
+      shoot(b.x + Math.cos(a) * 10, b.y + Math.sin(a) * 10, a, b.color, b, 2);   // daño ×2
+      b.shootCd = rnd(0.7, 1.3);
+    } else b.shootCd = 0.4;
+  }
+}
+
 /* ---------- proyectiles y partículas ---------- */
 const projectiles = [];
 const particles = [];
@@ -749,6 +974,7 @@ const cam = { x: player.x, y: player.y, zoom: 1, zoomTarget: 1 };
 /* ---------- v0.5: fase de preparación y capital ---------- */
 let prepT = 0;                 // segundos restantes de preparación (0 = fase superada)
 let playerCapital = null;      // planeta capital del jugador
+let gameTime = 0;              // v2.5: segundos transcurridos de partida (para jefes y eventos)
 const prepBanner = document.getElementById('prep-banner');
 
 /* =========================================================
@@ -851,6 +1077,11 @@ function damageShip(ship, dmg, killer) {
     particles.push({ x: player.x, y: player.y, vx: 0, vy: 0, life: 0.4, color: '#7ef9ff' });
     return;
   }
+  // v2.5: escudo de pulsos del jefe — invulnerable durante 3 s
+  if (ship.boss && (ship.pulseT || 0) > 0) {
+    particles.push({ x: ship.x, y: ship.y, vx: 0, vy: 0, life: 0.25, color: '#ffd166' });
+    return;
+  }
   ship.hp -= dmg;
   ship.flash = 0.15;
   // v1.6.1: aviso en pantalla cuando TE disparan (cooldown para no spamear)
@@ -877,6 +1108,43 @@ function damageShip(ship, dmg, killer) {
   if (ship.hp <= 0 && ship.alive) {
     ship.alive = false;
     explode(ship.x, ship.y, ship.color);
+    // v2.5: muerte de un jefe de facción
+    if (ship.boss) {
+      const fac = facState[ship.color];
+      if (fac) {
+        fac.bossAlive = false; fac.bossDeadT = BOSS_DEBUFF_TIME; fac.boss = null;
+        fac.incomeMul = 0.7;
+      }
+      const byPlayer = killer === player || (killer && killer.built);
+      if (byPlayer) {
+        player.credits += BOSS_REWARD_CREDITS;
+        player.kills += 5;
+        addStock(player.color, 'mineral', BOSS_REWARD_ORE);
+        addStock(player.color, 'gas', BOSS_REWARD_GAS);
+        chatSys('🏆 ¡' + ship.name + ' ha caído! Recompensa: ' + BOSS_REWARD_CREDITS + '◈ · ' + BOSS_REWARD_ORE + '⛏ · ' + BOSS_REWARD_GAS + '⛽');
+        notify('🏆 Jefe de facción destruido: ' + ship.name, 'info', 'boss-kill-' + ship.color, 10);
+      } else {
+        chatSys('☠️ ' + ship.name + ' ha sido destruido por ' + (killer && killer.name ? killer.name : 'fuerzas enemigas') + '.');
+      }
+      if (fac) chatSys('📉 ' + facName(ship.color) + ' está desmoralizada: ingresos reducidos durante ' + BOSS_DEBUFF_TIME + ' s.');
+      ship.gone = true;
+      if (typeof onPlayerKill === 'function') onPlayerKill(ship);
+      return;
+    }
+    // v2.5: muerte de capitán pirata
+    if (ship.pirateBoss) {
+      const byPlayer = killer === player || (killer && killer.built);
+      if (byPlayer) {
+        player.credits += PIRATE_BOSS_REWARD; player.kills += 3;
+        chatSys('🏴‍☠️ ¡' + ship.name + ' ha caído! Recompensa: ' + PIRATE_BOSS_REWARD + '◈');
+        notify('🏴‍☠️ Capitán pirata destruido: ' + ship.name, 'info', 'pirate-boss-kill', 10);
+      } else {
+        chatSys('☠️ ' + ship.name + ' ha sido destruido.');
+      }
+      ship.gone = true;
+      if (typeof onPlayerKill === 'function') onPlayerKill(ship);
+      return;
+    }
     if (ship === player) {
       player.deaths++;
       player.respawnT = 3;
@@ -944,6 +1212,7 @@ function respawnShip(ship) {
 }
 
 function update(dt) {
+  gameTime += dt;
   // v2.4: temporizador del planeta asediado por el jugador (para wingmen follow)
   if (player.attackPlanetT > 0) { player.attackPlanetT -= dt; if (player.attackPlanetT <= 0) player.attackPlanet = null; }
 
@@ -1046,7 +1315,8 @@ function update(dt) {
   for (const c in facState) {
     const f = facState[c];
     const owned = planets.filter(p => p.owner === c);
-    f.credits += owned.reduce((s, p) => s + (p.capital ? PLANET_INCOME * 3 : (p.res === 'creditos' ? PLANET_INCOME : PLANET_INCOME * 0.5)), 0) * dt * (persOf(c).incomeMul || 1);   // v1.3: los mercantiles ganan más
+    const incomeMul = (persOf(c).incomeMul || 1) * (f.incomeMul || 1);   // v2.5: debuff de jefe muerto se acumula a personalidad
+    f.credits += owned.reduce((s, p) => s + (p.capital ? PLANET_INCOME * 3 : (p.res === 'creditos' ? PLANET_INCOME : PLANET_INCOME * 0.5)), 0) * dt * incomeMul;
     const ships = frameFacShips[c] || 0;   // v2.0: cache del frame
     // v2.0: simetría total — el tope de naves de la IA es su nivel de hangar
     // (misma curva que el jugador: 5 + 5·nivel), ya no el número de planetas
@@ -1088,6 +1358,10 @@ function update(dt) {
         if (tp.turrets.length < TURRET_MAX) addTurret(tp);
       }
     }
+    // v2.5: spawn de jefe de facción cuando cumple condiciones
+    if (!f.bossAlive && f.bossDeadT > 0) f.bossDeadT -= dt;
+    if (!f.bossAlive && f.bossDeadT <= 0) f.incomeMul = 1;   // debuff de líder caído terminado
+    if (!f.bossAlive && f.bossDeadT <= 0 && bossCanSpawn(c)) spawnBoss(c);
     f.aiT -= dt;
     if (f.aiT <= 0) {
       f.aiT = rnd(30, 50);
@@ -1103,6 +1377,7 @@ function update(dt) {
     // v0.6: los wingmen (tus naves construidas) tienen su propia IA
     if (b.built) { wingmanUpdate(b, dt); continue; }
     if (b.pirate) { pirateThink(b, dt); continue; }   // v1.3
+    if (b.boss) { bossThink(b, dt); continue; }   // v2.5: jefe de facción
     facShipThink(b, dt);   // v0.8: IA de facción
   }
 
@@ -1519,6 +1794,46 @@ function draw() {
     if (!b.alive) continue;
     if (b.x < vL - 60 || b.x > vR + 60 || b.y < vT - 60 || b.y > vB + 60) continue;
     if (!b.built && !fogVisible(b.x, b.y)) continue;   // enemigos en niebla: invisibles
+    if (b.pirateBoss) {
+      // v2.5: capitán pirata
+      if (strat) {
+        ctx.fillStyle = '#cbd5e0';
+        ctx.fillRect(b.x - 2 / z, b.y - 2 / z, 4 / z, 4 / z);
+      } else {
+        ctx.strokeStyle = '#cbd5e0'; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.arc(b.x, b.y, BOSS_SIZE + 6, 0, TAU); ctx.stroke();
+        const hpw = 14, hph = 2;
+        ctx.fillStyle = '#330000'; ctx.fillRect(b.x - hpw / 2, b.y - BOSS_SIZE - 12, hpw, hph);
+        ctx.fillStyle = '#ff4444'; ctx.fillRect(b.x - hpw / 2, b.y - BOSS_SIZE - 12, hpw * (b.hp / b.maxHp), hph);
+        drawShipWithHalo(b.x, b.y, b.angle, b.color, BOSS_SIZE - 1, 1, b.thrustLvl || 0, b.flash > 0, 'jefe');
+        if (z >= 0.8) {
+          ctx.fillStyle = '#cbd5e0'; ctx.font = (6 / z) + 'px monospace'; ctx.textAlign = 'center';
+          ctx.fillText('☠️ ' + b.name, b.x, b.y - BOSS_SIZE - 16 / z);
+        }
+      }
+      continue;
+    }
+    if (b.boss) {
+      // v2.5: jefe de facción — siempre visible si está a la vista
+      if (strat) {
+        ctx.fillStyle = '#ffd166';
+        ctx.fillRect(b.x - 2.5 / z, b.y - 2.5 / z, 5 / z, 5 / z);
+      } else {
+        // anillo dorado
+        ctx.strokeStyle = '#ffd166'; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.arc(b.x, b.y, BOSS_SIZE + 10, 0, TAU); ctx.stroke();
+        // barra de HP
+        const hpw = 18, hph = 3;
+        ctx.fillStyle = '#330000'; ctx.fillRect(b.x - hpw / 2, b.y - BOSS_SIZE - 16, hpw, hph);
+        ctx.fillStyle = '#ff4444'; ctx.fillRect(b.x - hpw / 2, b.y - BOSS_SIZE - 16, hpw * (b.hp / b.maxHp), hph);
+        drawShipWithHalo(b.x, b.y, b.angle, b.color, BOSS_SIZE, 1, b.thrustLvl || 0, b.flash > 0, 'jefe');
+        if (z >= 0.8) {
+          ctx.fillStyle = '#ffd166'; ctx.font = (7 / z) + 'px monospace'; ctx.textAlign = 'center';
+          ctx.fillText('👑 ' + b.name, b.x, b.y - BOSS_SIZE - 20 / z);
+        }
+      }
+      continue;
+    }
     if (strat) {
       ctx.fillStyle = b.color;
       ctx.fillRect(b.x - 1.5 / z, b.y - 1.5 / z, 3 / z, 3 / z);
@@ -1677,8 +1992,11 @@ function drawMinimap() {
   // v2.0: soles siempre visibles en el minimapa (referencia de navegación)
   mctx.fillStyle = '#ffd166';
   for (const s of suns) mctx.fillRect(s.x * k, s.y * k, 2, 2);
-  mctx.fillStyle = '#8fa8d0';
-  for (const b of bots) if (b.alive && (b.built || fogVisible(b.x, b.y))) mctx.fillRect(b.x * k, b.y * k, 1, 1);
+  for (const b of bots) if (b.alive && (b.built || fogVisible(b.x, b.y))) {
+    if (b.boss) { mctx.fillStyle = '#ffd166'; mctx.fillRect(b.x * k - 1, b.y * k - 1, 3, 3); }
+    else if (b.pirateBoss) { mctx.fillStyle = '#cbd5e0'; mctx.fillRect(b.x * k - 1, b.y * k - 1, 3, 3); }
+    else { mctx.fillStyle = '#8fa8d0'; mctx.fillRect(b.x * k, b.y * k, 1, 1); }
+  }
   for (const r of net.remotes.values()) {
     if (!fogVisible(r.x, r.y)) continue;
     mctx.fillStyle = r.color;
@@ -1909,6 +2227,7 @@ function newGameInit() {
   player.y = clamp(cap.y + Math.sin(sa) * (cap.r + 90), 16, WORLD.h - 16);
   cam.x = player.x; cam.y = player.y;
   prepT = 300;   // 5 minutos de preparación protegida
+  gameTime = 0;   // v2.5: tiempo de partida desde cero
   // v0.8: cada facción IA empieza DE CERO — capital propia (lejos de la tuya) y 1 nave.
   // Su IA conquista, mina y construye; tu flota se construye en tu capital.
   initFactions();
@@ -2119,6 +2438,7 @@ function saveGame() {
       },
       capitalIdx: planets.indexOf(playerCapital),
       prepT: Math.max(0, prepT),
+      gameTime: gameTime || 0,   // v2.5: tiempo de partida para spawns de jefes
       // solo planetas con dueño (los neutros son el estado inicial determinista)
       // v1.7: se guarda también el stock local de suministros de cada planeta
       planets: planets.map((p, i) => p.owner ? { i, owner: p.owner, shield: p.shield, regenCd: p.shieldRegenCd || 0, cap: p.capital ? 1 : 0, known: p.knownOwner || null, stock: Math.round(p.stock * 100) / 100, tur: p.turrets.length } : null).filter(Boolean),   // v2.4: regenCd · v2.2: tur = nº de torretas (HP al completo al cargar)
@@ -2129,6 +2449,9 @@ function saveGame() {
         homeIdx: planets.indexOf(b.home), expandR: b.expandR,
         alive: b.alive, built: !!b.built, imp: !!b.imp, role: b.role || null, shipType: b.shipType || null,
         ox: b.ox ?? null, oy: b.oy ?? null, oplanet: b.oplanet ?? null,   // v0.7: orden activa
+        boss: !!b.boss, skill: b.skill || null, maxHp: b.maxHp || (b.boss ? BOSS_HP : 10),   // v2.5
+        callCd: b.callCd ?? BOSS_CALL_CD, jumpCd: b.jumpCd ?? BOSS_JUMP_CD,
+        pulseT: b.pulseT || 0, pulseUsed: !!b.pulseUsed,
       })),
       // v0.8: estado de las facciones imperio (economía, diplomacia, construcción)
       factions: (() => {
@@ -2139,6 +2462,7 @@ function saveGame() {
           personality: facState[c].personality || null,   // v1.3
           hangarLvl: facState[c].hangarLvl || 0,   // v2.0
           turretT: facState[c].turretT || 0, turretPlanet: facState[c].turretPlanet ?? null,   // v2.2
+          bossAlive: !!facState[c].bossAlive, bossDeadT: facState[c].bossDeadT || 0, incomeMul: facState[c].incomeMul || 1,   // v2.5
         };
         return o;
       })(),
@@ -2192,7 +2516,7 @@ function applySave(d) {
   // v0.8: esqueleto de facciones imperio (antes de restaurar capitales)
   for (const c of FACTION_COLORS) {
     if (c === player.color) continue;
-    if (!facState[c]) facState[c] = { capital: null, credits: 10, rel: {}, warT: {}, aiT: rnd(2, 6), buildT: 0, building: false, hangarLvl: 0, turretT: 0, turretPlanet: null };
+    if (!facState[c]) facState[c] = { capital: null, credits: 10, rel: {}, warT: {}, aiT: rnd(2, 6), buildT: 0, building: false, hangarLvl: 0, turretT: 0, turretPlanet: null, boss: null, bossAlive: false, bossDeadT: 0, incomeMul: 1 };
     for (const o of FACTION_COLORS) if (o !== c && facState[c].rel[o] == null) facState[c].rel[o] = 0;
   }
   for (const sp of d.planets || []) {
@@ -2236,6 +2560,7 @@ function applySave(d) {
     facState[c].personality = sv.personality || PERS_KEYS[rndi(0, PERS_KEYS.length - 1)];   // v1.3
     facState[c].hangarLvl = sv.hangarLvl || 0;   // v2.0
     facState[c].turretT = sv.turretT || 0; facState[c].turretPlanet = sv.turretPlanet ?? null;   // v2.2
+    facState[c].bossAlive = !!sv.bossAlive; facState[c].bossDeadT = sv.bossDeadT || 0; facState[c].incomeMul = sv.incomeMul || 1;   // v2.5
     if (sv.rel) facState[c].rel = sv.rel;
     if (sv.warT) facState[c].warT = sv.warT;
   }
@@ -2261,6 +2586,14 @@ function applySave(d) {
       b.speed = 42; b.home = playerCapital || b.home; b.uid = ++wingUid;
       b.maxHp = 10 + ((SHIPS.find(s => s.id === b.shipType) || SHIPS[0]).hp);   // v1.1
       b.ox = sb.ox ?? null; b.oy = sb.oy ?? null; b.oplanet = sb.oplanet ?? null;   // v0.7
+    }
+    // v2.5: restaurar jefe de facción
+    if (sb.boss) {
+      b.boss = true; b.imp = true; b.skill = sb.skill || BOSS_SKILL[BOSS_COLORS.indexOf(sb.color) % BOSS_SKILL.length];
+      b.maxHp = sb.maxHp || BOSS_HP; b.hp = Math.min(b.hp, b.maxHp); b.speed = BOSS_SPEED;
+      b.callCd = sb.callCd ?? BOSS_CALL_CD; b.jumpCd = sb.jumpCd ?? BOSS_JUMP_CD;
+      b.pulseT = sb.pulseT || 0; b.pulseUsed = !!sb.pulseUsed;
+      if (facState[sb.color]) { facState[sb.color].boss = b; facState[sb.color].bossAlive = b.alive; }
     }
     bots.push(b);
   }
@@ -2288,6 +2621,7 @@ function applySave(d) {
   } else if ((d.prepT || 0) > 0) resetStory();
   else storyActivate(0);
   prepT = d.prepT || 0;
+  gameTime = d.gameTime || 0;   // v2.5: tiempo de partida
   // stats derivadas y posición (si murió justo al guardar, reaparece en capital)
   applyUpgrades();
   if (d.player.hp > 0) {
@@ -3723,6 +4057,17 @@ function renderEmpire() {
     if (r <= -30)      relRows.push('⚔️ GUERRA: <span style="color:' + a + '">' + facName(a) + '</span> vs <span style="color:' + b + '">' + facName(b) + '</span>');
     else if (r >= 50)  relRows.push('🤝 alianza: <span style="color:' + a + '">' + facName(a) + '</span> + <span style="color:' + b + '">' + facName(b) + '</span>');
   }
+  html += '<h4 class="panel-sub2">JEFES DE FACCIÓN</h4>';
+  for (const c of FACTION_COLORS) {
+    if (c === player.color) continue;
+    const f = facState[c];
+    if (!f || f.dead) continue;
+    let state = '<span>desconocido</span>';
+    if (f.bossAlive) state = '<span style="color:#ffd166">👑 ' + (f.boss ? f.boss.name : 'Jefe activo') + '</span>';
+    else if (f.bossDeadT > 0) state = '<span style="color:#ff6b6b">💀 caído · debuff ' + Math.ceil(f.bossDeadT) + ' s</span>';
+    else state = '<span style="color:#8fa8d0">👤 sin jefe</span>';
+    html += '<div class="diplo-row"><span style="color:' + c + '">' + facName(c) + '</span>' + state + '</div>';
+  }
   html += '<h4 class="panel-sub2">GUERRAS Y ALIANZAS ENTRE FACCIONES IA</h4>';
   html += relRows.length ? relRows.map(r => '<div class="diplo-row">' + r + '</div>').join('')
                          : '<div class="diplo-row"><span>galaxia en paz… de momento</span></div>';
@@ -3810,6 +4155,20 @@ function spawnPirate(x, y) {
   bots.push(b);
   return b;
 }
+function spawnPirateBoss(x, y) {
+  const b = {
+    name: PIRATE_BOSS_NAMES[rndi(0, PIRATE_BOSS_NAMES.length - 1)], color: PIRATE_COLOR,
+    x: clamp(x, 20, WORLD.w - 20), y: clamp(y, 20, WORLD.h - 20),
+    angle: rnd(0, TAU), speed: 18, waypoint: null,
+    hp: PIRATE_BOSS_HP, maxHp: PIRATE_BOSS_HP, alive: true, respawnT: 0,
+    shootCd: rnd(0.5, 1.5), credits: 0, kills: 0,
+    vx: 0, vy: 0, flash: 0, home: { x, y }, expandR: 0,
+    pirate: true, pirateBoss: true, task: null, retalT: 0, lastHitBy: null,
+  };
+  bots.push(b);
+  chatSys('🏴‍☠️ ¡' + b.name + ' lidera la banda pirata!');
+  return b;
+}
 function pirateThink(b, dt) {
   b.flash = Math.max(0, b.flash - dt);
   b.shootCd -= dt;
@@ -3858,6 +4217,7 @@ function fireEvent(force) {
     } while (tries < 20 && suns.some(s => dist2(x, y, s.x, s.y) < (s.r + 400) ** 2));
     const n = rndi(2, 3);
     for (let i = 0; i < n; i++) spawnPirate(x + rnd(-150, 150), y + rnd(-150, 150));
+    if (Math.random() < 0.35) spawnPirateBoss(x + rnd(-200, 200), y + rnd(-200, 200));   // v2.5: capitán pirata
     chatSys('🏴‍☠️ ¡PIRATAS detectados en (' + Math.floor(x) + ',' + Math.floor(y) + ')! Atacan a todo el mundo.');
   } else if (kind === 'veta') {
     const alive = asteroids.filter(a => a.alive);

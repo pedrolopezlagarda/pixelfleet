@@ -1,4 +1,4 @@
-# 🚀 PIXEL FLEET — v2.4.1
+# 🚀 PIXEL FLEET — v2.5
 
 Juego de **estrategia espacial** vista cenital, pixel-art, multijugador.
 **Todas las facciones empiezan de cero**: su planeta capital y **una sola nave**,
@@ -83,6 +83,23 @@ disparan a los hostiles en un radio de 420 u.
   sus naves **disparan primero a tus torretas** antes que al escudo.
 - El panel de imperio (TAB) y la etiqueta del planeta muestran sus defensas
   (🛰×n). Se guardan en la partida (saves viejos migran solos, sin torretas).
+
+### 👑 Jefes de facción (v2.5)
+Cada facción IA puede generar un **jefe único** cuando tiene **≥3 planetas** y ha
+pasado algo de tiempo de partida. Es una nave acorazada con nombre propio,
+**40 HP**, **anillo dorado** y una habilidad especial según su facción:
+**llamada de refuerzos**, **escudo de pulsos** (3 s de invulnerabilidad al bajar
+al 25 % HP) o **salto corto**.
+
+- **Comportamiento híbrido**: patrulla entre sus planetas en paz; si está en
+  guerra contigo, te caza o ataca tu capital; si atacan su capital, vuelve a
+  defenderla.
+- **Recompensa por matarlo**: **500◈ + 100⛏ + 100⛽**. La facción recibe el
+  debuff **«líder caído»** durante 90 s: ingresos ×0,7 y no declara guerras.
+- **Capitán pirata**: algunas oleadas de piratas incluyen un jefe pirata menor
+  (24 HP, 250◈ de recompensa).
+- El panel de imperio (TAB) muestra el estado de cada jefe: 👑 activo, 💀 caído
+  con tiempo de debuff o sin jefe. Todo se guarda en la partida.
 
 ### 🔔 Notificaciones y menús cómodos (v1.6.1)
 - **Avisos en pantalla** (arriba, grandes): te disparan, atacan un planeta tuyo,
@@ -417,7 +434,7 @@ Posiciones a 10 Hz, disparos y chat retransmitidos **por sala**.
 | `style.css` | Estilo retro pixelado |
 | `game.js` | Motor completo + sistemas v0.3/v0.4/v0.5/v0.6 |
 | `server.js` | Servidor WebSocket multijugador con salas |
-| `tools/verify_ui.py` | Test E2E real (Playwright): 291 checks — menús, clics, tienda/tecnología, flota, hangar (60 niveles), notificaciones, RTS, panel de flota, facciones IA, niebla, economía, eventos, victoria, persistencia, zoom, suministros (v1.7), sistemas solares y daño/evasión solar (v2.0), misiones-historia (v2.1, objetivos cercanos v2.1.2), fuego disciplinado de wingmen (v2.1.1), asedios con torretas orbitales (v2.2), tutorial del control RTS (v2.3), asedio planetario con ventana de conquista y wingmen sitiadores (v2.4) |
+| `tools/verify_ui.py` | Test E2E real (Playwright): 299 checks — menús, clics, tienda/tecnología, flota, hangar (60 niveles), notificaciones, RTS, panel de flota, facciones IA, niebla, economía, eventos, victoria, persistencia, zoom, suministros (v1.7), sistemas solares y daño/evasión solar (v2.0), misiones-historia (v2.1, objetivos cercanos v2.1.2), fuego disciplinado de wingmen (v2.1.1), asedios con torretas orbitales (v2.2), tutorial del control RTS (v2.3), asedio planetario con ventana de conquista y wingmen sitiadores (v2.4), jefes de facción y capitán pirata (v2.5) |
 | `README.md` | Este documento |
 
 ### Tests E2E
@@ -429,22 +446,23 @@ PYTHONIOENCODING=utf-8 ../.venv/Scripts/python tools/verify_ui.py   # desde app/
 
 ## Próximas ideas
 
-Jefes de facción · estaciones espaciales comerciales · convoys de suministros ·
-más arcos de historia.
+Estaciones espaciales comerciales · convoys de suministros · más arcos de historia.
 
 ---
 
-*v2.4.1 · ASEDIO PLANETARIO: escudo roto = 60 s sin regenerar, IA entra en zona de
-captura, wingmen atacan planetas enemigos (attack/follow; fix: follow también al
-disparar torretas orbitales) · TUTORIAL DEL CONTROL RTS (v2.3): guía de 11 pasos
-con foco luminoso y persistencia `tutDone` ·
-asedios con defensas orbitales (torretas 8 HP, 120◈+20⛏ desde el hangar),
-disciplina de fuego (solo guerra/provocación/piratas), conquista bloqueada
-mientras queden defensas vivas, wingmen e IA sitiadores, IA que fortifica su
-capital · misiones-historia «La señal del Vacío» (6 capítulos, Mapa del Vacío) ·
-galaxia de 12 sistemas solares (24000², daño solar, evasión IA) · hangar masivo
-de 60 niveles (también la IA) · panel de flota permanente con órdenes ·
-suministros por planeta · niebla de guerra*
+*v2.5 · JEFES DE FACCIÓN: jefe único por facción IA (40 HP, habilidad especial,
+recompensa 500◈+100⛏+100⛽, debuff de líder caído), capitán pirata, estado en
+panel de imperio · ASEDIO PLANETARIO: escudo roto = 60 s sin regenerar, IA entra
+en zona de captura, wingmen atacan planetas enemigos (attack/follow; fix: follow
+también al disparar torretas orbitales) · TUTORIAL DEL CONTROL RTS (v2.3): guía
+de 11 pasos con foco luminoso y persistencia `tutDone` · asedios con defensas
+orbitales (torretas 8 HP, 120◈+20⛏ desde el hangar), disciplina de fuego (solo
+guerra/provocación/piratas), conquista bloqueada mientras queden defensas vivas,
+wingmen e IA sitiadores, IA que fortifica su capital · misiones-historia «La
+señal del Vacío» (6 capítulos, Mapa del Vacío) · galaxia de 12 sistemas solares
+(24000², daño solar, evasión IA) · hangar masivo de 60 niveles (también la IA) ·
+panel de flota permanente con órdenes · suministros por planeta · niebla de
+guerra*
 
 > ⚠️ El save (`pixelfleet_save_v2`) no es compatible con partidas de mundos
 > anteriores (8000/12000): al entrar empezarás una partida nueva en la galaxia

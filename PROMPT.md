@@ -271,9 +271,17 @@ El roadmap v0.5 quedó completo en v1.2 (A-F + G/H). Nuevas líneas:
       también se setea al impactar una torreta orbital enemiga, no solo al escudo;
       así los wingmen en `follow` ayudan a destruir las defensas antes de entrar a
       capturar. E2E: 291 checks verdes.
+- [x] **v2.5 — Jefes de facción**: cada facción IA genera un **jefe único**
+      (nave acorazada con nombre propio, 40 HP, anillo dorado) al alcanzar
+      ≥3 planetas y tras 3 min de partida. Habilidad por facción: llamada de
+      refuerzos, escudo de pulsos o salto corto. Comportamiento híbrido:
+      patrulla en paz, caza al jugador en guerra y defiende su capital si la
+      atacan. Al morir: **500◈ + 100⛏ + 100⛽** y debuff **«líder caído»**
+      (ingresos ×0,7, sin declarar guerras durante 90 s). **Capitán pirata**
+      en oleadas pirata (35 %, 24 HP, 250◈). Panel de imperio muestra el estado
+      de cada jefe. Persistente en save v2. E2E: **299 checks verdes**.
 - A futuro:
-      jefes de facción, estaciones comerciales, convoys de suministros,
-      más arcos de historia.
+      estaciones comerciales, convoys de suministros, más arcos de historia.
 - [x] **v1.6 — Hangar por niveles**: la flota activa ya NO depende de los
       planetas conquistados. El hangar tiene 5 ampliaciones comprables
       (150/300/450/600/750◈): cada nivel da **+2 flota activa y +2 almacén**

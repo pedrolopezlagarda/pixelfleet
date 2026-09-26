@@ -1149,6 +1149,49 @@ with sync_playwright() as pw:
     page.wait_for_timeout(500)
     check(page.evaluate("facState[window.__aiC].capital.turrets.length") >= 1, 'la torreta de la IA queda instalada en órbita')
 
+    # ===== 5i. v2.5: jefes de facción =====
+    print('— v2.5: jefes de facción —')
+    page.evaluate("prepT = 0; gameTime = 200;")
+    page.evaluate("""(() => {
+      let c = FACTION_COLORS.find(c => c !== player.color && !facState[c].dead);
+      if (!c) { c = FACTION_COLORS.find(c => c !== player.color); facState[c].dead = false; }
+      window.__bossColor = c;
+      facState[c].bossAlive = false; facState[c].bossDeadT = 0; facState[c].incomeMul = 1;
+      let n = 0;
+      for (const p of planets) {
+        if (!p.owner && p.res === 'mineral') { p.owner = c; n++; }
+        if (n >= 3) break;
+      }
+      window.__boss = spawnBoss(c);
+    })()""")
+    check(page.evaluate("!!window.__boss && window.__boss.boss"), 'v2.5: spawn de jefe de facción')
+    check(page.evaluate("window.__boss.hp") == 40, 'v2.5: jefe con HP completo')
+    check(page.evaluate("facState[window.__bossColor].bossAlive"), 'v2.5: facción marca jefe como vivo')
+    # matar al jefe y verificar recompensas/debuff
+    page.evaluate("""(() => {
+      const b = window.__boss;
+      b.x = player.x + 120; b.y = player.y; b.speed = 0; b.angle = 0;
+      window.__creditsBefore = Math.floor(player.credits);
+      damageShip(b, 100, player);
+    })()""")
+    page.wait_for_timeout(500)
+    check(page.evaluate("!facState[window.__bossColor].bossAlive"), 'v2.5: jefe marcado como muerto')
+    check(page.evaluate("facState[window.__bossColor].bossDeadT") > 0, 'v2.5: facción sufre debuff de líder caído')
+    check(page.evaluate("Math.floor(player.credits) - window.__creditsBefore") >= 500,
+          'v2.5: recompensa de créditos al matar jefe')
+    # panel de imperio refleja el estado
+    page.keyboard.press('Tab')
+    page.wait_for_timeout(300)
+    empire_text = page.locator('#empire-body').inner_text().lower()
+    check('caído' in empire_text or 'debuff' in empire_text, 'v2.5: panel de imperio muestra jefe caído')
+    page.keyboard.press('Escape')
+    page.wait_for_timeout(200)
+    # capitán pirata
+    page.evaluate("""(() => {
+      window.__pb = spawnPirateBoss(player.x + 200, player.y + 200);
+    })()""")
+    check(page.evaluate("!!window.__pb && window.__pb.pirateBoss"), 'v2.5: spawn de capitán pirata')
+
     # ===== 6. chat =====
     print('— chat —')
     page.keyboard.press('Enter')
