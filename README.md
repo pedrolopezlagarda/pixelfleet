@@ -1,4 +1,4 @@
-# 🚀 PIXEL FLEET — v2.2
+# 🚀 PIXEL FLEET — v2.4
 
 Juego de **estrategia espacial** vista cenital, pixel-art, multijugador.
 **Todas las facciones empiezan de cero**: su planeta capital y **una sola nave**,
@@ -52,7 +52,7 @@ muestra el atajo de teclado). No hace falta memorizar nada.
 
 ## Sistemas del juego
 
-### 🛰️ Asedios: defensas orbitales (v2.2)
+### 🛰️ Asedios: defensas orbitales (v2.2, reforzados en v2.4)
 **Conquistar un planeta defendido ya no es gratis.** Cada planeta con dueño puede
 tener hasta **4 torretas orbitales** que lo orbitan, tienen **8 HP** propio y
 disparan a los hostiles en un radio de 420 u.
@@ -68,6 +68,15 @@ disparan a los hostiles en un radio de 420 u.
   Hay que tumbarlas una a una — tus wingmen y tu piloto automático también las
   asedian en guerra. Al conquistar el planeta, las defensas supervivientes
   **caen con él** (no se capturan).
+- **Ventana de conquista (v2.4)**: cuando el escudo de un planeta llega a **0**,
+  **no se regenera durante 60 s**. Eso da tiempo a entrar y capturar sin tener
+  que disparar sin parar. La IA en guerra lo aprovecha: concentra fuego hasta
+  romper el escudo y, una vez roto, sus naves **entran en la zona de captura**
+  en lugar de quedarse orbitando lejos.
+- **Tus naves asedian planetas (v2.4)**: una nave con orden **⚔️ ATACAR** cerca
+  de un planeta enemigo disparará a su escudo (y a sus torretas si las tiene);
+  cuando el escudo cae, entrará a capturar. Las naves en **👥 SEGUIRME** copian
+  tu objetivo: si tú disparas a un planeta enemigo, ellas también lo atacan.
 - **IA simétrica**: las facciones fortifican su capital (hasta 4) y sus otros
   planetas (hasta 2) pagando el mismo coste de su hucha y sus minas; y en guerra
   sus naves **disparan primero a tus torretas** antes que al escudo.
@@ -407,7 +416,7 @@ Posiciones a 10 Hz, disparos y chat retransmitidos **por sala**.
 | `style.css` | Estilo retro pixelado |
 | `game.js` | Motor completo + sistemas v0.3/v0.4/v0.5/v0.6 |
 | `server.js` | Servidor WebSocket multijugador con salas |
-| `tools/verify_ui.py` | Test E2E real (Playwright): 291 checks — menús, clics, tienda/tecnología, flota, hangar (60 niveles), notificaciones, RTS, panel de flota, facciones IA, niebla, economía, eventos, victoria, persistencia, zoom, suministros (v1.7), sistemas solares y daño/evasión solar (v2.0), misiones-historia (v2.1, objetivos cercanos v2.1.2), fuego disciplinado de wingmen (v2.1.1), asedios con torretas orbitales (v2.2), tutorial del control RTS (v2.3) |
+| `tools/verify_ui.py` | Test E2E real (Playwright): 291 checks — menús, clics, tienda/tecnología, flota, hangar (60 niveles), notificaciones, RTS, panel de flota, facciones IA, niebla, economía, eventos, victoria, persistencia, zoom, suministros (v1.7), sistemas solares y daño/evasión solar (v2.0), misiones-historia (v2.1, objetivos cercanos v2.1.2), fuego disciplinado de wingmen (v2.1.1), asedios con torretas orbitales (v2.2), tutorial del control RTS (v2.3), asedio planetario con ventana de conquista y wingmen sitiadores (v2.4) |
 | `README.md` | Este documento |
 
 ### Tests E2E
@@ -424,14 +433,16 @@ más arcos de historia.
 
 ---
 
-*v2.3 · TUTORIAL DEL CONTROL RTS: guía de 11 pasos con foco luminoso y
-persistencia `tutDone` · asedios con defensas orbitales (torretas 8 HP,
-120◈+20⛏ desde el hangar), disciplina de fuego (solo guerra/provocación/
-piratas), conquista bloqueada mientras queden defensas vivas, wingmen e IA
-sitiadores, IA que fortifica su capital · misiones-historia «La señal del Vacío»
-(6 capítulos, Mapa del Vacío) · galaxia de 12 sistemas solares (24000², daño
-solar, evasión IA) · hangar masivo de 60 niveles (también la IA) · panel de
-flota permanente con órdenes · suministros por planeta · niebla de guerra*
+*v2.4 · ASEDIO PLANETARIO: escudo roto = 60 s sin regenerar, IA entra en zona de
+captura, wingmen atacan planetas enemigos (attack/follow) · TUTORIAL DEL CONTROL
+RTS (v2.3): guía de 11 pasos con foco luminoso y persistencia `tutDone` ·
+asedios con defensas orbitales (torretas 8 HP, 120◈+20⛏ desde el hangar),
+disciplina de fuego (solo guerra/provocación/piratas), conquista bloqueada
+mientras queden defensas vivas, wingmen e IA sitiadores, IA que fortifica su
+capital · misiones-historia «La señal del Vacío» (6 capítulos, Mapa del Vacío) ·
+galaxia de 12 sistemas solares (24000², daño solar, evasión IA) · hangar masivo
+de 60 niveles (también la IA) · panel de flota permanente con órdenes ·
+suministros por planeta · niebla de guerra*
 
 > ⚠️ El save (`pixelfleet_save_v2`) no es compatible con partidas de mundos
 > anteriores (8000/12000): al entrar empezarás una partida nueva en la galaxia

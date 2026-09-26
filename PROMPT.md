@@ -259,6 +259,14 @@ El roadmap v0.5 quedó completo en v1.2 (A-F + G/H). Nuevas líneas:
       dedicados a la flota (selección, clic-izquierdo, menú derecho, panel de
       flota) con foco luminoso, persistencia `tutDone` y reactivación desde el
       menú en partidas continuadas. E2E: 291 checks verdes.
+- [x] **v2.4 — Asedio planetario mejorado** (feedback de Pedro: al romper el
+      escudo de un planeta enemigo, este se regenera demasiado rápido y la IA
+      no consigue conquistarlo): cuando un escudo llega a 0, **no regenera
+      durante 60 s**; la IA en guerra concentra fuego hasta romperlo y, una vez
+      roto, sus naves **entran en la zona de captura** en lugar de orbitar lejos;
+      los wingmen con orden `attack` cerca de un planeta enemigo asedian escudo/
+      torretas y luego capturan; los wingmen en `follow` copian el planeta que
+      el jugador esté atacando. E2E: 291 checks verdes.
 - A futuro:
       jefes de facción, estaciones comerciales, convoys de suministros,
       más arcos de historia.

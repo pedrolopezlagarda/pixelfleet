@@ -67,6 +67,8 @@ const player = {
   role: 'hold', ox: null, oy: null, oplanet: null,   // v2.0: orden activa en automático
   deflCd: 0,                  // v1.4: cooldown del escudo deflector
   ship: 'caza',                 // modelo actual (catálogo SHIPS, v0.6)
+  attackPlanet: null,          // v2.4: planeta que el jugador está asediando (para wingmen follow)
+  attackPlanetT: 0,
 };
 
 /* ---------- sprites pixel-art ---------- */
@@ -292,6 +294,7 @@ for (let si = 0; si < suns.length; si++) {
       capturer: null,     // facción que está capturando
       shield: 0,          // puntos de escudo (solo planetas con dueño)
       shieldMax: 25,
+      shieldRegenCd: 0,   // v2.4: tras romperse el escudo, no regenera durante 60 s
       turrets: [],        // v2.2: defensas orbitales [{a, hp, cd, x, y, ...}]
     });
   }
@@ -450,7 +453,7 @@ function initFactions() {
     if (!cap) cap = planets.find(p => !p.owner);
     if (!cap) continue;
     usedSys.add(cap.sys);
-    cap.owner = c; cap.capital = true; cap.shieldMax = 100; cap.shield = 100;
+    cap.owner = c; cap.capital = true; cap.shieldMax = 100; cap.shield = 100; cap.shieldRegenCd = 0;
     cap.name = 'CAPITAL ' + facName(c);
     cap.res = 'mineral'; cap.stock = CAP_START_STOCK;   // v1.7: capital minera también para la IA
     facState[c] = { capital: cap, credits: 20, rel: {}, warT: {}, aiT: rnd(2, 6), buildT: 0, building: false, personality: null, hangarLvl: 0, turretT: 0, turretPlanet: null };   // v2.0: hangarLvl · v2.2: obra de torreta en curso
@@ -562,13 +565,27 @@ function facShipThink(b, dt) {
   let tx = null, ty = null;
   const t = b.task;
   if (t && (t.type === 'conquer' || t.type === 'attack') && t.p) {
-    const hold = t.p.r + 10;
-    if (dist2(b.x, b.y, t.p.x, t.p.y) > hold * hold) { tx = t.p.x; ty = t.p.y; b.waypoint = null; }
-    else {
-      if (!b.waypoint || dist2(b.x, b.y, b.waypoint.x, b.waypoint.y) < 400)
-        b.waypoint = { x: clamp(t.p.x + rnd(-hold, hold), 20, WORLD.w - 20),
-                       y: clamp(t.p.y + rnd(-hold, hold), 20, WORLD.h - 20) };
-      tx = b.waypoint.x; ty = b.waypoint.y;
+    if (t.type === 'attack' && t.p.shield <= 0 && !t.p.turrets.length) {
+      // v2.4: escudo roto -> las naves imperiales entran en zona de captura
+      const cr = t.p.r + CAPTURE_RANGE_EXTRA;
+      if (dist2(b.x, b.y, t.p.x, t.p.y) > cr * cr) { tx = t.p.x; ty = t.p.y; b.waypoint = null; }
+      else {
+        if (!b.waypoint || dist2(b.x, b.y, b.waypoint.x, b.waypoint.y) < 400) {
+          const ang = rnd(0, TAU), rad = rnd(0, Math.max(0, cr - 6));
+          b.waypoint = { x: clamp(t.p.x + Math.cos(ang) * rad, 20, WORLD.w - 20),
+                         y: clamp(t.p.y + Math.sin(ang) * rad, 20, WORLD.h - 20) };
+        }
+        tx = b.waypoint.x; ty = b.waypoint.y;
+      }
+    } else {
+      const hold = t.p.r + 10;
+      if (dist2(b.x, b.y, t.p.x, t.p.y) > hold * hold) { tx = t.p.x; ty = t.p.y; b.waypoint = null; }
+      else {
+        if (!b.waypoint || dist2(b.x, b.y, b.waypoint.x, b.waypoint.y) < 400)
+          b.waypoint = { x: clamp(t.p.x + rnd(-hold, hold), 20, WORLD.w - 20),
+                         y: clamp(t.p.y + rnd(-hold, hold), 20, WORLD.h - 20) };
+        tx = b.waypoint.x; ty = b.waypoint.y;
+      }
     }
   } else if (t && t.type === 'mine' && t.a && t.a.alive) {
     if (dist2(b.x, b.y, t.a.x, t.a.y) > 260 * 260) { tx = t.a.x; ty = t.a.y; }
@@ -927,6 +944,9 @@ function respawnShip(ship) {
 }
 
 function update(dt) {
+  // v2.4: temporizador del planeta asediado por el jugador (para wingmen follow)
+  if (player.attackPlanetT > 0) { player.attackPlanetT -= dt; if (player.attackPlanetT <= 0) player.attackPlanet = null; }
+
   /* --- jugador --- */
   if (player.alive) {
     const boosting = keys[' '] && player.fuel > 0;
@@ -1176,6 +1196,8 @@ function update(dt) {
             dead = true; break;
           }
           p.shield -= pr.dmg || 1;   // v1.4: el bláster pesado desgasta más escudo
+          if (p.shield <= 0) p.shieldRegenCd = 60;   // v2.4: escudo roto -> sin regenerar 60 s
+          if (pr.owner === player) { player.attackPlanet = p; player.attackPlanetT = 8; }   // v2.4: wingmen follow atacan este planeta
           // v1.6.1: aviso en pantalla si atacan un planeta TUYO (cooldown por planeta)
           if (p.owner === player.color) notify('⚠️ ¡' + p.name + ' bajo ataque!', 'warn', 'pl-' + p.name, 8);
           // v0.8: dañar el escudo de una facción cuenta como provocación tuya
@@ -1228,7 +1250,7 @@ function update(dt) {
         if (p.capture >= 1) {
           const was = p.owner;
           p.owner = faction; p.capture = 0; p.capturer = null;
-          p.shield = p.shieldMax;
+          p.shield = p.shieldMax; p.shieldRegenCd = 0;
           if (p.turrets.length) {   // v2.2: las defensas caen con el planeta (no se capturan)
             for (const t of p.turrets) explode(t.x, t.y, was || '#a0aec0');
             p.turrets.length = 0;
@@ -1267,8 +1289,11 @@ function update(dt) {
 
   // v1.1: los escudos se RECARGAN consumiendo el recurso del dueño
   // (jugador: ⛏ del stock de sus minas (v1.7) · facciones IA: ◈ de su hucha).
+  // v2.4: cooldown tras romperse el escudo.
   for (const p of planets) {
     if (!p.owner || p.shield >= p.shieldMax) continue;
+    p.shieldRegenCd = Math.max(0, (p.shieldRegenCd || 0) - dt);
+    if (p.shieldRegenCd > 0) continue;
     const pts = Math.min(1.5 * dt, p.shieldMax - p.shield);
     if (p.owner === player.color) {
       const cost = pts * 0.2;
@@ -1875,7 +1900,7 @@ function newGameInit() {
   playerCapital = cap;
   cap.owner = player.color;
   cap.capital = true;
-  cap.shieldMax = 100; cap.shield = 100;   // escudo grande de capital
+  cap.shieldMax = 100; cap.shield = 100; cap.shieldRegenCd = 0;   // escudo grande de capital
   cap.name = 'CAPITAL ' + player.name;
   cap.res = 'mineral'; cap.stock = CAP_START_STOCK;   // v1.7: regla «capital minera» — arranque con 30⛏
   const sa = rnd(0, TAU);
@@ -2095,7 +2120,7 @@ function saveGame() {
       prepT: Math.max(0, prepT),
       // solo planetas con dueño (los neutros son el estado inicial determinista)
       // v1.7: se guarda también el stock local de suministros de cada planeta
-      planets: planets.map((p, i) => p.owner ? { i, owner: p.owner, shield: p.shield, cap: p.capital ? 1 : 0, known: p.knownOwner || null, stock: Math.round(p.stock * 100) / 100, tur: p.turrets.length } : null).filter(Boolean),   // v2.2: tur = nº de torretas (HP al completo al cargar)
+      planets: planets.map((p, i) => p.owner ? { i, owner: p.owner, shield: p.shield, regenCd: p.shieldRegenCd || 0, cap: p.capital ? 1 : 0, known: p.knownOwner || null, stock: Math.round(p.stock * 100) / 100, tur: p.turrets.length } : null).filter(Boolean),   // v2.4: regenCd · v2.2: tur = nº de torretas (HP al completo al cargar)
       fog: Array.from(explored).join(''),   // v0.9: mapa explorado (1600 celdas 0/1)
       bots: bots.filter(b => !b.pirate).map(b => ({   // v1.3: los piratas son del evento, no se guardan
         name: b.name, color: b.color, x: b.x, y: b.y,
@@ -2152,7 +2177,7 @@ function applySave(d) {
   tutDone = !!d.tutDone;   // v2.3
   // mundo: reset dinámico sobre el universo determinista
   for (const p of planets) {
-    p.owner = null; p.shield = 0; p.shieldMax = 25;
+    p.owner = null; p.shield = 0; p.shieldMax = 25; p.shieldRegenCd = 0;
     p.capture = 0; p.capturer = null; p.capital = false;
     p.stock = 0;   // v1.7
     p.turrets = [];   // v2.2: defensas orbitales (se reconstruyen del save)
@@ -2172,7 +2197,7 @@ function applySave(d) {
   for (const sp of d.planets || []) {
     const p = planets[sp.i];
     if (!p) continue;
-    p.owner = sp.owner; p.shield = sp.shield;
+    p.owner = sp.owner; p.shield = sp.shield; p.shieldRegenCd = sp.regenCd ?? 0;
     p.knownOwner = sp.known ?? null;   // v0.9: último dueño conocido
     // v1.7: stock local. Migración de saves viejos (sin stock): 0, salvo las
     // capitales, que arrancan con 30⛏ (regla «capital minera»)
@@ -2923,6 +2948,43 @@ function pilotShip(hi) {
   chatSys('🧑‍🚀 Ahora pilotas: ' + shipDef(type).name + '. Tu nave anterior queda en el hangar.');
   saveGame();
 }
+// v2.4: planeta enemigo que un wingman debe asediar según su orden actual
+function wingmanSiegePlanet(b) {
+  if (prepT > 0) return null;
+  if (b.role === 'attack' && b.ox != null) {
+    for (const p of planets) {
+      if (!p.owner || p.owner === player.color || !wingmanCanEngage(p.owner)) continue;
+      if (dist2(p.x, p.y, b.ox, b.oy) < (p.r + 400) ** 2) return p;
+    }
+  }
+  if (b.role === 'follow' && player.attackPlanet && wingmanCanEngage(player.attackPlanet.owner))
+    return player.attackPlanet;
+  return null;
+}
+// v2.4: punto al que debe moverse un wingman para asediar/capturar un planeta
+function wingmanSiegeMoveTarget(b, p) {
+  const cr = p.r + CAPTURE_RANGE_EXTRA;
+  const d2 = dist2(b.x, b.y, p.x, p.y);
+  if (p.shield <= 0 && !p.turrets.length) {
+    // captura: mantenerse dentro del rango de captura
+    if (d2 > cr * cr) return { x: p.x, y: p.y, resetWp: true };
+    if (!b.waypoint || dist2(b.x, b.y, b.waypoint.x, b.waypoint.y) < 400) {
+      const ang = rnd(0, TAU), rad = rnd(0, Math.max(0, cr - 6));
+      b.waypoint = { x: clamp(p.x + Math.cos(ang) * rad, 20, WORLD.w - 20),
+                     y: clamp(p.y + Math.sin(ang) * rad, 20, WORLD.h - 20) };
+    }
+    return { x: b.waypoint.x, y: b.waypoint.y, resetWp: false };
+  }
+  // asedio: acercarse lo suficiente para disparar escudo/torretas
+  const siegeR = Math.max(cr, p.r + 220);
+  if (d2 > siegeR * siegeR) return { x: p.x, y: p.y, resetWp: true };
+  if (!b.waypoint || dist2(b.x, b.y, b.waypoint.x, b.waypoint.y) < 400) {
+    const hold = p.r + 120;
+    b.waypoint = { x: clamp(p.x + rnd(-hold, hold), 20, WORLD.w - 20),
+                   y: clamp(p.y + rnd(-hold, hold), 20, WORLD.h - 20) };
+  }
+  return { x: b.waypoint.x, y: b.waypoint.y, resetWp: false };
+}
 // IA de wingmen. Roles: follow (formación contigo), defend (patrulla la capital),
 // garrison (órbita cerrada de la capital), defendP (patrulla el planeta oplanet),
 // move (ir a ox,oy → al llegar pasa a hold), hold (mantener posición), attack
@@ -2979,6 +3041,15 @@ function wingmanUpdate(b, dt) {
     tx = wp.x; ty = wp.y;
     fireAnchor = playerCapital;
   } else return;
+  // v2.4: prioridad de asedio planetario (sobrescribe el movimiento normal)
+  const siege = wingmanSiegePlanet(b);
+  b.siegePlanet = siege || null;
+  if (siege) {
+    const mv = wingmanSiegeMoveTarget(b, siege);
+    tx = mv.x; ty = mv.y;
+    if (mv.resetWp) b.waypoint = null;
+    fireAnchor = b;
+  }
   const dd = Math.sqrt(dist2(b.x, b.y, tx, ty));
   const wa = sunAvoid(b.x, b.y, Math.atan2(ty - b.y, tx - b.x));   // v2.0: evasión solar
   b.angle = angleLerp(b.angle, wa, 1 - Math.pow(0.05, dt));
@@ -2993,37 +3064,53 @@ function wingmanUpdate(b, dt) {
   // (v0.8: en paz tus naves no atacan a nadie); en preparación nadie pelea
   b.shootCd -= dt;
   if (b.shootCd <= 0 && prepT <= 0 && fireAnchor) {
-    let tgt = null, td = fireRange * fireRange;
-    gridEach(fireAnchor.x, fireAnchor.y, fireRange, o => {   // v2.0: candidatos por grid (mismo criterio)
-      if (o === b || !o.alive || o.color === player.color) return false;
-      if (!o.pirate && !wingmanCanEngage(o.color)) return false;   // v0.8 disciplina · v1.3 piratas siempre · v2.1.1 helper
-      const d = dist2(o.x, o.y, fireAnchor.x, fireAnchor.y);
-      if (d < td) { td = d; tgt = o; }
-      return false;
-    });
-    if (tgt) {
-      const ta = Math.atan2(tgt.y - b.y, tgt.x - b.x) + rnd(-0.12, 0.12);
-      shoot(b.x + Math.cos(ta) * 8, b.y + Math.sin(ta) * 8, ta, b.color, b);
-      b.shootCd = rnd(0.9, 1.7) * mod.rof;
-    } else {
-      // v2.2: sin naves objetivo, en guerra/provocación tus naves asedian las
-      // defensas orbitales enemigas que tengan a tiro (hay que tumbarlas para
-      // conquistar; el fuego sobre escudos sigue siendo manual del jugador)
-      let tt = null;
-      for (const p of planets) {
-        if (!p.owner || p.owner === player.color || !p.turrets.length) continue;
-        if (!wingmanCanEngage(p.owner)) continue;
-        if (dist2(p.x, p.y, fireAnchor.x, fireAnchor.y) > (fireRange + p.r + TURRET_ORBIT) ** 2) continue;
-        for (const tur of p.turrets) {
-          const d = dist2(tur.x, tur.y, fireAnchor.x, fireAnchor.y);
-          if (d < td) { td = d; tt = tur; }
-        }
+    // v2.4: asedio planetario prioritario (torretas -> escudo -> captura)
+    if (b.siegePlanet) {
+      const p = b.siegePlanet;
+      let tt = null, td = Infinity;
+      for (const tur of p.turrets) {
+        const d = dist2(tur.x, tur.y, b.x, b.y);
+        if (d < (fireRange + 200) ** 2 && d < td) { td = d; tt = tur; }
       }
-      if (tt) {
-        const ta = Math.atan2(tt.y - b.y, tt.x - b.x) + rnd(-0.12, 0.12);
+      if (tt || p.shield > 0) {
+        const gx = tt ? tt.x : p.x, gy = tt ? tt.y : p.y;
+        const ta = Math.atan2(gy - b.y, gx - b.x) + rnd(-0.12, 0.12);
         shoot(b.x + Math.cos(ta) * 8, b.y + Math.sin(ta) * 8, ta, b.color, b);
         b.shootCd = rnd(0.9, 1.7) * mod.rof;
       } else b.shootCd = 0.3;
+    } else {
+      let tgt = null, td = fireRange * fireRange;
+      gridEach(fireAnchor.x, fireAnchor.y, fireRange, o => {   // v2.0: candidatos por grid (mismo criterio)
+        if (o === b || !o.alive || o.color === player.color) return false;
+        if (!o.pirate && !wingmanCanEngage(o.color)) return false;   // v0.8 disciplina · v1.3 piratas siempre · v2.1.1 helper
+        const d = dist2(o.x, o.y, fireAnchor.x, fireAnchor.y);
+        if (d < td) { td = d; tgt = o; }
+        return false;
+      });
+      if (tgt) {
+        const ta = Math.atan2(tgt.y - b.y, tgt.x - b.x) + rnd(-0.12, 0.12);
+        shoot(b.x + Math.cos(ta) * 8, b.y + Math.sin(ta) * 8, ta, b.color, b);
+        b.shootCd = rnd(0.9, 1.7) * mod.rof;
+      } else {
+        // v2.2: sin naves objetivo, en guerra/provocación tus naves asedian las
+        // defensas orbitales enemigas que tengan a tiro (hay que tumbarlas para
+        // conquistar; el fuego sobre escudos sigue siendo manual del jugador)
+        let tt = null;
+        for (const p of planets) {
+          if (!p.owner || p.owner === player.color || !p.turrets.length) continue;
+          if (!wingmanCanEngage(p.owner)) continue;
+          if (dist2(p.x, p.y, fireAnchor.x, fireAnchor.y) > (fireRange + p.r + TURRET_ORBIT) ** 2) continue;
+          for (const tur of p.turrets) {
+            const d = dist2(tur.x, tur.y, fireAnchor.x, fireAnchor.y);
+            if (d < td) { td = d; tt = tur; }
+          }
+        }
+        if (tt) {
+          const ta = Math.atan2(tt.y - b.y, tt.x - b.x) + rnd(-0.12, 0.12);
+          shoot(b.x + Math.cos(ta) * 8, b.y + Math.sin(ta) * 8, ta, b.color, b);
+          b.shootCd = rnd(0.9, 1.7) * mod.rof;
+        } else b.shootCd = 0.3;
+      }
     }
   }
 }
